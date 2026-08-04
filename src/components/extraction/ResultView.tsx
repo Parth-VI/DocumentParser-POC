@@ -11,7 +11,7 @@ type Props = {
 
 export function ResultView({ data, locationsByPath, activePath, onLocate }: Props) {
   return (
-    <div className="font-mono text-xs rounded-lg border bg-muted/30 p-3 overflow-auto max-h-[60vh] leading-relaxed">
+    <div className="max-h-[60vh] overflow-auto rounded-md border border-line-soft bg-wash p-3 font-mono text-xs leading-relaxed">
       {renderNode(data, "", { locationsByPath, activePath, onLocate })}
     </div>
   );
@@ -70,33 +70,36 @@ function Leaf({ value, path, ctx }: { value: unknown; path: string; ctx: Ctx }) 
   }, [active]);
 
   const display =
-    value === null ? "null" :
-    typeof value === "string" ? `"${value}"` :
-    String(value);
+    value === null ? "null" : typeof value === "string" ? `"${value}"` : String(value);
   const color =
-    typeof value === "string" ? "text-emerald-700 dark:text-emerald-300" :
-    typeof value === "number" ? "text-cyan-700 dark:text-cyan-300" :
-    typeof value === "boolean" ? "text-amber-700 dark:text-amber-300" :
-    "text-muted-foreground";
+    typeof value === "string"
+      ? "text-ink"
+      : typeof value === "number"
+        ? "text-highlight"
+        : typeof value === "boolean"
+          ? "text-flag"
+          : "text-faint";
 
   return (
     <span
       ref={rowRef}
-      className={`inline-flex items-center gap-1 px-1 rounded transition-colors ${
-        active ? "bg-amber-200/60 ring-1 ring-amber-400 dark:bg-amber-400/25 dark:ring-amber-400/70" : ""
+      className={`inline-flex items-center gap-1 rounded px-1 transition-colors ${
+        active ? "bg-highlight-tint ring-1 ring-highlight-line" : ""
       }`}
     >
       <span className={color}>{display}</span>
       {locs && locs.length > 0 && (
         <button
           onClick={() => ctx.onLocate(path)}
-          title={active
-            ? "Hide source highlight"
-            : `Show source on page ${locs.map((l) => l.page).join(", ")}`}
-          className={`h-4 w-4 inline-flex items-center justify-center rounded transition-colors ${
+          title={
             active
-              ? "text-amber-700 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-200"
-              : "text-primary/70 hover:text-primary hover:bg-primary/10"
+              ? "Hide highlight"
+              : `Show where this came from — page ${locs.map((l) => l.page).join(", ")}`
+          }
+          className={`inline-flex h-4 w-4 items-center justify-center rounded transition-colors ${
+            active
+              ? "text-highlight hover:opacity-80"
+              : "text-highlight/70 hover:bg-highlight-tint hover:text-highlight"
           }`}
           type="button"
         >

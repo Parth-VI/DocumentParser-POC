@@ -1,49 +1,53 @@
 import { Link } from "@tanstack/react-router";
-import { FileSearch, Mail } from "lucide-react";
+import { FileText } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { to: "/", label: "Schema studio", icon: FileSearch },
-  { to: "/mail", label: "Mail inbox", icon: Mail },
+  { to: "/", label: "Documents", exact: true, count: undefined },
+  { to: "/mail", label: "Inbox", exact: false, count: 2 },
 ] as const;
 
 /**
- * Shared top bar. `right` carries per-screen controls (the extract shortcut hint,
- * a sync button) so each screen keeps its own affordances without duplicating the
- * brand, nav, and theme switch.
+ * Shared top bar — quiet and editorial. `right` carries per-screen controls
+ * (an extract-shortcut hint, a sync button) so each screen keeps its own
+ * affordances without duplicating the wordmark, nav, and theme switch.
  */
-export function AppHeader({ subtitle, right }: { subtitle?: string; right?: React.ReactNode }) {
+export function AppHeader({ right }: { subtitle?: string; right?: React.ReactNode }) {
   return (
-    <header className="border-b bg-card/60 backdrop-blur sticky top-0 z-20">
-      <div className="max-w-[1400px] mx-auto px-6 py-3 flex items-center gap-3">
-        <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground grid place-items-center shrink-0">
-          <FileSearch className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <h1 className="font-semibold leading-tight truncate">Document Extraction Studio</h1>
-          <p className="text-xs text-muted-foreground truncate">
-            {subtitle ?? "Define your schema → upload → extract structured data"}
-          </p>
-        </div>
+    <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur-sm">
+      <div className="mx-auto flex h-13 max-w-[1400px] flex-wrap items-center gap-x-7 gap-y-2 px-5">
+        <Link to="/" className="flex items-center gap-2.5" aria-label="Document Studio home">
+          <span className="grid h-5 w-5 place-items-center rounded-[5px] bg-ink text-paper">
+            <FileText className="h-3 w-3" strokeWidth={1.75} />
+          </span>
+          <span className="text-[13.5px] font-medium tracking-[-0.01em] text-ink">
+            Document Studio
+          </span>
+        </Link>
 
-        <nav className="ml-4 hidden sm:flex items-center gap-1">
-          {NAV.map(({ to, label, icon: Icon }) => (
+        <nav className="flex items-center gap-5">
+          {NAV.map(({ to, label, exact, count }) => (
             <Link
               key={to}
               to={to}
-              // activeOptions.exact keeps "/" from lighting up on /mail.
-              activeOptions={{ exact: to === "/" }}
-              className="px-2.5 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors inline-flex items-center gap-1.5"
-              activeProps={{ className: cn("bg-accent text-accent-foreground font-medium") }}
+              activeOptions={{ exact }}
+              className="group inline-flex items-center border-b border-transparent py-0.5 text-[13px] text-faint transition-colors hover:text-ink"
+              activeProps={{
+                className: cn("!border-ink font-medium !text-ink"),
+              }}
             >
-              <Icon className="h-3.5 w-3.5" />
               {label}
+              {count != null && (
+                <span className="ml-1.5 font-mono text-[10.5px] text-faint group-hover:text-muted-foreground">
+                  {count}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-4">
           {right}
           <ThemeToggle />
         </div>

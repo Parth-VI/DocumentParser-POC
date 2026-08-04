@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   AlertCircle,
   AlertTriangle,
-  Inbox,
+  Link2,
   Loader2,
   Mail,
   Paperclip,
@@ -15,12 +15,10 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  Webhook as WebhookIcon,
 } from "lucide-react";
 import { AppHeader } from "@/components/AppHeader";
 import { ConnectMailboxDialog } from "@/components/mail/ConnectMailboxDialog";
 import { WebhookManager } from "@/components/mail/WebhookManager";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,8 +30,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/ai-api";
-import { formatDateTime, formatRelative, formatTime, secondsSince } from "@/lib/time";
+import { formatDateTime, formatTime, secondsSince } from "@/lib/time";
 import {
   disconnectAccount,
   fetchAccounts,
@@ -186,23 +185,26 @@ function MailInbox() {
   const sync = async (account: MailAccount) => {
     setSyncing(true);
     setLastSync(null);
-    const toastId = toast.loading(`Fetching unread mail for ${account.email}…`);
+    const toastId = toast.loading(`Checking ${account.email} for new mail…`);
     try {
       // wait=true: extraction is the point, so block for the real summary rather
       // than reporting "started" and leaving the operator guessing.
       const result = await syncAccount(account.id, true);
       if ("skipped_already_running" in result && result.skipped_already_running) {
         // The worker claimed this mailbox first; its results land via the refresh.
-        toast.info("A sync is already running for this mailbox — showing its results shortly.", {
-          id: toastId,
-        });
+        toast.info(
+          "A check is already running for this mailbox — its results will appear shortly.",
+          {
+            id: toastId,
+          },
+        );
       } else if ("fetched" in result) {
         setLastSync(result);
         toast.success(
           result.fetched === 0
-            ? "No unread mail to fetch"
-            : `${result.processed} message(s): ${result.succeeded} extracted, ` +
-                `${result.failed} failed, ${result.skipped} skipped, ` +
+            ? "No new mail waiting"
+            : `${result.processed} message(s): ${result.succeeded} read, ` +
+                `${result.failed} need attention, ${result.skipped} skipped, ` +
                 `${result.no_documents} without documents`,
           { id: toastId, duration: 6000 },
         );
@@ -211,7 +213,7 @@ function MailInbox() {
       }
       await Promise.all([loadAccounts(), loadMessages(), loadAutoStatus()]);
     } catch (e) {
-      toast.error(errorMessage(e, "Sync failed"), { id: toastId });
+      toast.error(errorMessage(e, "Couldn't check for mail"), { id: toastId });
     } finally {
       setSyncing(false);
     }
@@ -238,7 +240,7 @@ function MailInbox() {
   const disconnect = async (account: MailAccount) => {
     if (
       !confirm(
-        `Disconnect ${account.email}? Its stored messages, documents and extractions are deleted too.`,
+        `Disconnect ${account.email}? Its stored messages, documents and results are deleted too.`,
       )
     )
       return;
@@ -254,58 +256,210 @@ function MailInbox() {
 
   const syncTarget = selectedAccount ?? (accounts.length === 1 ? accounts[0] : null);
 
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + PAGE_SIZE, total);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20">
+    <div className="flex min-h-screen flex-col bg-paper text-foreground">
       <AppHeader
-        subtitle="Fetch unread mail → merge attachments → extract with the tenant schema"
         right={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setWebhooksOpen(true)}>
-              <WebhookIcon className="h-4 w-4" /> Webhooks
+              <Link2 className="h-4 w-4" /> Connections
             </Button>
             <Button size="sm" onClick={() => setConnectOpen(true)}>
-              <Plug className="h-4 w-4" /> Connect mailbox
+              <Plug className="h-4 w-4" /> Connect a mailbox
             </Button>
           </div>
         }
       />
 
-      <main className="max-w-[1400px] mx-auto px-6 py-6 space-y-4">
-        {accounts.length === 0 ? (
+      {accounts.length === 0 ? (
+        <main className="mx-auto w-full max-w-[1400px] flex-1 px-6 py-10">
           <EmptyMailboxes onConnect={() => setConnectOpen(true)} />
-        ) : (
-          <>
-            {/* Is automatic syncing actually happening? Says which, rather than
-                leaving "auto-sync on but nothing arrives" ambiguous. */}
+        </main>
+      ) : (
+        <main className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]">
+          {/* ── LEFT · the inbox ─────────────────────────────── */}
+          <section className="flex min-w-0 flex-col border-b border-line lg:border-b-0 lg:border-r">
+            <div className="px-7 pb-5 pt-8">
+              <h1 className="font-serif text-[30px] font-normal leading-[1.15] tracking-[-0.01em]">
+                Inbox
+              </h1>
+              <p className="mt-2 max-w-[52ch] text-[14px] leading-relaxed text-muted-foreground">
+                Documents emailed to this workspace are read as they arrive. Open one to see what we
+                found.
+              </p>
+            </div>
+
+            {/* filter / action toolbar */}
+            <div className="flex flex-wrap items-center gap-2 border-y border-line-soft bg-wash/60 px-7 py-2.5">
+              <div className="relative min-w-[180px] flex-1">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search sender or subject…"
+                  className="h-8 pl-8 text-[13px]"
+                />
+              </div>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger className="h-8 w-auto min-w-[140px] text-[13px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All mailboxes</SelectItem>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      {a.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+                <SelectTrigger className="h-8 w-auto min-w-[130px] text-[13px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any status</SelectItem>
+                  {MAIL_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {statusLabel(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <label
+                htmlFor="inbox-live"
+                className="flex cursor-pointer items-center gap-2 text-[12px] text-muted-foreground"
+                title={
+                  "Re-checks this list so newly read mail appears without reloading. " +
+                  "It only affects this browser tab — it does not fetch mail."
+                }
+              >
+                <Switch id="inbox-live" checked={live} onCheckedChange={setLive} />
+                <span>
+                  Auto-refresh
+                  <span className="text-faint">
+                    {" · "}
+                    {!live ? "off" : !watching ? "idle" : `every ${POLL_INTERVAL_MS / 1000}s`}
+                  </span>
+                </span>
+              </label>
+              <button
+                onClick={() => loadMessages()}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 text-[12px] text-faint transition-colors hover:text-ink disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
+              </button>
+              {syncTarget && (
+                <Button
+                  size="sm"
+                  className="h-8"
+                  onClick={() => sync(syncTarget)}
+                  disabled={syncing}
+                >
+                  {syncing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Mail className="h-3.5 w-3.5" />
+                  )}
+                  Fetch new mail
+                </Button>
+              )}
+            </div>
+
+            {/* message list */}
+            <div className="flex-1">
+              {loading && messages.length === 0 ? (
+                <div className="space-y-2 p-7">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Skeleton key={i} className="h-9 w-full" />
+                  ))}
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="px-7 py-16 text-center">
+                  <p className="text-[13.5px] text-muted-foreground">
+                    Nothing here yet. Press <span className="text-ink">Fetch new mail</span> to pull
+                    from a connected mailbox — new documents also appear on their own.
+                  </p>
+                </div>
+              ) : (
+                <MessageGroups messages={messages} />
+              )}
+
+              {messages.length > 0 && (
+                <div className="px-7 py-6 text-[12.5px] text-faint">
+                  Nothing else on this page. New documents appear here on their own.
+                </div>
+              )}
+            </div>
+
+            {/* pagination footer */}
+            {total > PAGE_SIZE && (
+              <div className="sticky bottom-0 flex items-center justify-between border-t border-line bg-paper/95 px-7 py-3 backdrop-blur-sm">
+                <span className="font-mono text-[11px] text-faint">
+                  {from}–{to} of {total}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7"
+                    disabled={offset === 0}
+                    onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7"
+                    disabled={offset + PAGE_SIZE >= total}
+                    onClick={() => setOffset(offset + PAGE_SIZE)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* ── RIGHT · setup ─────────────────────────────── */}
+          <aside className="flex flex-col bg-surface px-6 py-8">
+            <span className="mb-4 text-[11px] uppercase tracking-[0.09em] text-faint">Setup</span>
+
+            {/* Is automatic checking actually happening? */}
             {autoStatus && autoStatus.auto_sync_accounts > 0 && (
               <div
-                className={`rounded-md border text-xs px-3 py-2 flex items-start gap-2 ${
+                className={cn(
+                  "mb-5 flex items-start gap-2 rounded-md border px-3 py-2 text-[12px]",
                   autoStatus.worker.running
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
-                    : "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
-                }`}
+                    ? "border-ok/30 bg-ok/10 text-ok"
+                    : "border-flag/40 bg-flag-tint text-flag",
+                )}
               >
                 {autoStatus.worker.running ? (
                   <>
-                    <Radio className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <Radio className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>
-                      Auto-sync is live — the worker checked in {autoStatus.worker.seconds_ago ?? 0}
-                      s ago (pid {autoStatus.worker.pid}), polling every{" "}
-                      {autoStatus.worker.tick_seconds}s.
+                      Watching for new mail — last checked {autoStatus.worker.seconds_ago ?? 0}s
+                      ago.
                       {autoStatus.due_now.length > 0 &&
-                        ` ${autoStatus.due_now.length} mailbox(es) due on the next pass.`}
+                        ` ${autoStatus.due_now.length} mailbox(es) due next pass.`}
                     </span>
                   </>
                 ) : (
                   <>
-                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>
                       <strong>
-                        {autoStatus.auto_sync_accounts} mailbox(es) have auto-sync on, but the
-                        worker isn't running
+                        {autoStatus.auto_sync_accounts} mailbox(es) are set to auto-check, but the
+                        watcher isn't running.
                       </strong>{" "}
-                      — nothing will be fetched until you start it:
-                      <code className="ml-1 font-mono bg-black/10 dark:bg-white/10 px-1 rounded">
+                      Nothing new will arrive until it's started:
+                      <code className="ml-1 rounded bg-ink/10 px-1 font-mono">
                         {autoStatus.command}
                       </code>
                       {autoStatus.worker.last_seen_at && (
@@ -317,372 +471,64 @@ function MailInbox() {
               </div>
             )}
 
-            {/* Connected mailboxes */}
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {accounts.map((account) => (
-                <div
-                  key={account.id}
-                  className={`rounded-xl border bg-card p-3 space-y-2 ${
-                    String(account.id) === accountId ? "ring-1 ring-primary" : ""
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    <Mail className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                    <button
-                      type="button"
-                      className="min-w-0 flex-1 text-left"
-                      onClick={() => setAccountId(String(account.id))}
-                      title="Filter the list to this mailbox"
-                    >
-                      <div className="text-sm font-medium truncate">{account.email}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {account.tenant_name ?? `tenant ${account.tenant_id}`} · {account.folder}
-                        {account.model ? ` · ${account.model}` : ""}
-                      </div>
-                    </button>
-                    {account.auto_sync_enabled && !account.is_active && (
-                      <Badge variant="secondary" className="text-[10px]">
-                        Paused
-                      </Badge>
-                    )}
-                  </div>
+            {/* Where documents arrive */}
+            <div className="border-b border-line-soft pb-6">
+              <div className="text-[14px] font-medium">Where documents arrive</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                Connect a mailbox and we'll read each document as it lands.
+              </p>
 
-                  {account.last_error && (
-                    <div className="text-xs text-rose-600 dark:text-rose-400 flex items-start gap-1.5">
-                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                      <span className="line-clamp-2">{account.last_error}</span>
-                    </div>
-                  )}
-
-                  {/* Auto-sync is the primary switch: off means manual-only, and
-                      pause/resume has nothing to act on. Turning it back on also
-                      clears a leftover pause, so "on" always means running. */}
-                  <div className="rounded-lg border bg-background/60 p-2 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id={`auto-${account.id}`}
-                        checked={account.auto_sync_enabled}
-                        onCheckedChange={(v) =>
-                          patchAccount(
-                            account,
-                            v
-                              ? { auto_sync_enabled: true, is_active: true }
-                              : { auto_sync_enabled: false },
-                          )
-                        }
-                      />
-                      <label
-                        htmlFor={`auto-${account.id}`}
-                        className="text-xs font-medium cursor-pointer"
-                      >
-                        Auto-sync
-                      </label>
-                      {account.syncing_since && (
-                        <span className="ml-auto text-[10px] text-muted-foreground inline-flex items-center gap-1">
-                          <Loader2 className="h-3 w-3 animate-spin" /> syncing
-                        </span>
-                      )}
-                    </div>
-                    {account.auto_sync_enabled && (
-                      <>
-                        <Select
-                          value={String(account.sync_interval_seconds)}
-                          onValueChange={(v) =>
-                            patchAccount(account, { sync_interval_seconds: Number(v) })
-                          }
-                          disabled={!account.is_active}
-                        >
-                          <SelectTrigger className="h-7 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SYNC_INTERVALS.map((i) => (
-                              <SelectItem key={i.value} value={String(i.value)}>
-                                {i.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-[10px] text-muted-foreground">
-                          {account.is_active
-                            ? nextRunLabel(account)
-                            : "Paused — press ▶ to resume. Sync now still works."}
-                        </p>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs"
-                      onClick={() => sync(account)}
-                      disabled={syncing}
-                    >
-                      {syncing ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-3.5 w-3.5" />
-                      )}
-                      Sync now
-                    </Button>
-                    {/* Only meaningful while auto-sync is on: there are no
-                        automatic runs to pause otherwise. */}
-                    {account.auto_sync_enabled && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title={
-                          account.is_active ? "Pause automatic syncing" : "Resume automatic syncing"
-                        }
-                        onClick={() => togglePaused(account)}
-                      >
-                        {account.is_active ? (
-                          <Pause className="h-3.5 w-3.5" />
-                        ) : (
-                          <Play className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
-                      title="Disconnect"
-                      onClick={() => disconnect(account)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                    <span className="ml-auto text-[10px] text-muted-foreground">
-                      {account.last_synced_at
-                        ? `synced ${formatTime(account.last_synced_at, true)}`
-                        : "never synced"}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </section>
-
-            {lastSync && lastSync.errors.length > 0 && (
-              <div className="rounded-md border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 text-xs px-3 py-2">
-                <strong>Last sync reported {lastSync.errors.length} problem(s):</strong>
-                <ul className="mt-1 space-y-0.5">
-                  {lastSync.errors.slice(0, 5).map((e, i) => (
-                    <li key={i} className="font-mono text-[11px]">
-                      {e.uid ? `UID ${e.uid}: ` : ""}
-                      {e.error}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Filters */}
-            <section className="flex flex-wrap items-end gap-2">
-              <div className="w-full sm:w-64">
-                <label className="text-xs text-muted-foreground">Mailbox</label>
-                <Select value={accountId} onValueChange={setAccountId}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All mailboxes</SelectItem>
-                    {accounts.map((a) => (
-                      <SelectItem key={a.id} value={String(a.id)}>
-                        {a.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-full sm:w-44">
-                <label className="text-xs text-muted-foreground">Status</label>
-                <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Any status</SelectItem>
-                    {MAIL_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex-1 min-w-[200px]">
-                <label className="text-xs text-muted-foreground">Search</label>
-                <div className="relative mt-1">
-                  <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Subject or sender…"
-                    className="pl-8"
+              <div className="mt-4 space-y-2.5">
+                {accounts.map((account) => (
+                  <MailboxCard
+                    key={account.id}
+                    account={account}
+                    selected={String(account.id) === accountId}
+                    syncing={syncing}
+                    onSelect={() => setAccountId(String(account.id))}
+                    onSync={() => sync(account)}
+                    onTogglePaused={() => togglePaused(account)}
+                    onPatch={(patch) => patchAccount(account, patch)}
+                    onDisconnect={() => disconnect(account)}
                   />
-                </div>
+                ))}
               </div>
-              {/* Says plainly whether the page is polling, and lets it be stopped —
-                  a silent background refresh is confusing when you see it in the
-                  service log. */}
-              <div
-                className="flex items-center gap-2"
-                title={
-                  "Re-queries this list so new extractions appear without reloading. " +
-                  "It only affects this browser tab — it does not fetch mail."
-                }
-              >
-                <Switch id="inbox-live" checked={live} onCheckedChange={setLive} />
-                <label htmlFor="inbox-live" className="text-xs cursor-pointer">
-                  <span className="font-medium">Auto-refresh</span>
-                  <span className="text-muted-foreground">
-                    {" · "}
-                    {!live
-                      ? "off"
-                      : !watching
-                        ? "idle, nothing is auto-syncing"
-                        : `every ${POLL_INTERVAL_MS / 1000}s`}
-                  </span>
-                </label>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => loadMessages()} disabled={loading}>
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+
+              <Button className="mt-4 w-full" onClick={() => setConnectOpen(true)}>
+                <Plug className="h-4 w-4" /> Connect a mailbox
               </Button>
-              {syncTarget && (
-                <Button size="sm" onClick={() => sync(syncTarget)} disabled={syncing}>
-                  {syncing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Inbox className="h-4 w-4" />
-                  )}
-                  Fetch unread
-                </Button>
-              )}
-            </section>
 
-            {/* Message list */}
-            <section className="rounded-xl border bg-card overflow-hidden">
-              <div className="hidden md:grid grid-cols-[1fr_200px_110px_130px_90px] gap-3 px-4 py-2 border-b bg-muted/40 text-xs font-medium text-muted-foreground">
-                <div>Subject</div>
-                <div>From</div>
-                <div>Received</div>
-                <div>Status</div>
-                <div className="text-right">Fields</div>
-              </div>
-
-              {loading && messages.length === 0 ? (
-                <div className="p-4 space-y-2">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} className="h-10 w-full" />
-                  ))}
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="p-10 text-center">
-                  <Inbox className="h-10 w-10 text-muted-foreground/50 mx-auto" />
-                  <p className="text-sm text-muted-foreground mt-3">
-                    Nothing here yet. Hit <strong>Fetch unread</strong> to pull mail from the
-                    connected mailbox.
-                  </p>
-                </div>
-              ) : (
-                <ul className="divide-y">
-                  {messages.map((message) => (
-                    <li key={message.id}>
-                      <Link
-                        to="/mail/$messageId"
-                        params={{ messageId: String(message.id) }}
-                        className="grid md:grid-cols-[1fr_200px_110px_130px_90px] gap-1 md:gap-3 px-4 py-3 hover:bg-accent/40 transition-colors items-center"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium truncate">
-                            {message.subject || (
-                              <span className="text-muted-foreground">(no subject)</span>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                            {message.attachment_count > 0 && (
-                              <span
-                                className="inline-flex items-center gap-1"
-                                title={`${message.attachment_count} attachment(s)`}
-                              >
-                                <Paperclip className="h-3 w-3" />
-                                {message.attachment_count}
-                              </span>
-                            )}
-                            {pageCountOf(message) != null && (
-                              <span title="Pages in the extracted document">
-                                {pageCountOf(message)}p
-                              </span>
-                            )}
-                            {message.error_message && (
-                              <span className="text-rose-600 dark:text-rose-400 truncate">
-                                {message.error_message}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="min-w-0 text-xs">
-                          <div className="truncate">
-                            {message.from_name || message.from_address}
-                          </div>
-                          {message.from_name && (
-                            <div className="text-muted-foreground truncate">
-                              {message.from_address}
-                            </div>
-                          )}
-                        </div>
-                        <div
-                          className="text-xs text-muted-foreground"
-                          title={formatDateTime(message.received_at ?? message.sent_at)}
-                        >
-                          {formatRelative(message.received_at ?? message.sent_at)}
-                        </div>
-                        <div>
-                          <StatusBadge status={message.status} />
-                        </div>
-                        <div className="text-xs text-muted-foreground md:text-right">
-                          {message.status === "Success" ? "view →" : ""}
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {total > PAGE_SIZE && (
-                <div className="flex items-center justify-between px-4 py-2 border-t text-xs">
-                  <span className="text-muted-foreground">
-                    {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
-                  </span>
-                  <div className="flex gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7"
-                      disabled={offset === 0}
-                      onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7"
-                      disabled={offset + PAGE_SIZE >= total}
-                      onClick={() => setOffset(offset + PAGE_SIZE)}
-                    >
-                      Next
-                    </Button>
-                  </div>
+              {lastSync && lastSync.errors.length > 0 && (
+                <div className="mt-4 rounded-md border border-flag/40 bg-flag-tint px-3 py-2 text-[12px] text-flag">
+                  <strong>The last check reported {lastSync.errors.length} problem(s):</strong>
+                  <ul className="mt-1 space-y-0.5">
+                    {lastSync.errors.slice(0, 5).map((e, i) => (
+                      <li key={i} className="font-mono text-[11px]">
+                        {e.uid ? `#${e.uid}: ` : ""}
+                        {e.error}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
-            </section>
-          </>
-        )}
-      </main>
+            </div>
+
+            {/* Where results go */}
+            <div className="pt-6">
+              <div className="text-[14px] font-medium">Where results go</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                Once a document is read, the details can pass straight to another system.
+              </p>
+              <button
+                onClick={() => setWebhooksOpen(true)}
+                className="mt-4 inline-flex items-center gap-1.5 text-[13px] text-highlight underline decoration-highlight-line underline-offset-2 transition-colors hover:text-ink"
+              >
+                <Link2 className="h-3.5 w-3.5" /> Set up where results go
+              </button>
+            </div>
+          </aside>
+        </main>
+      )}
 
       <ConnectMailboxDialog
         open={connectOpen}
@@ -691,8 +537,8 @@ function MailInbox() {
         onConnected={(account) => {
           setAccounts((curr) => [account, ...curr]);
           setAccountId(String(account.id));
-          // A fresh mailbox is empty until synced; offer that as the next step.
-          toast.info("Mailbox connected — hit Sync now to fetch its unread mail.");
+          // A fresh mailbox is empty until checked; offer that as the next step.
+          toast.info("Mailbox connected — press Fetch new mail to pull its unread mail.");
           void navigate({ to: "/mail" });
         }}
       />
@@ -701,22 +547,280 @@ function MailInbox() {
   );
 }
 
+/* ────────────────────────── message list ────────────────────────── */
+
+/** Group the current page of messages under Today / Yesterday / older headings. */
+function MessageGroups({ messages }: { messages: MailMessageListItem[] }) {
+  const groups = useMemo(() => {
+    const map = new Map<string, MailMessageListItem[]>();
+    for (const m of messages) {
+      const key = dayBucketLabel(m.received_at ?? m.sent_at);
+      const arr = map.get(key) ?? [];
+      arr.push(m);
+      map.set(key, arr);
+    }
+    return Array.from(map.entries());
+  }, [messages]);
+
+  return (
+    <div>
+      {groups.map(([label, items]) => (
+        <div key={label}>
+          <div className="flex items-center gap-3 px-7 pb-2 pt-5">
+            <span className="text-[11px] uppercase tracking-[0.09em] text-faint">{label}</span>
+            <span className="h-px flex-1 bg-line-soft" />
+          </div>
+          {items.map((message) => (
+            <MessageRow key={message.id} message={message} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MessageRow({ message }: { message: MailMessageListItem }) {
+  const meta = statusMeta(message.status);
+  const sender = message.from_name || message.from_address || "Unknown sender";
+  const pages = pageCountOf(message);
+  return (
+    <Link
+      to="/mail/$messageId"
+      params={{ messageId: String(message.id) }}
+      className="group flex items-center gap-4 px-7 py-3 transition-colors hover:bg-wash"
+    >
+      <span className={cn("h-[6px] w-[6px] shrink-0 rounded-full", meta.dot)} />
+
+      <span className="w-[150px] shrink-0 truncate text-[13.5px] font-medium" title={sender}>
+        {sender}
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13.5px] text-muted-foreground">
+          {message.subject || <span className="text-faint">(no subject)</span>}
+        </span>
+        {(message.attachment_count > 0 || pages != null || message.error_message) && (
+          <span className="mt-0.5 flex items-center gap-2.5 truncate text-[11.5px] text-faint">
+            {message.attachment_count > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Paperclip className="h-3 w-3" />
+                {message.attachment_count}
+              </span>
+            )}
+            {pages != null && <span>{pages} pages</span>}
+            {message.error_message && (
+              <span className="truncate text-flag">{message.error_message}</span>
+            )}
+          </span>
+        )}
+      </span>
+
+      <span className={cn("hidden w-[120px] shrink-0 text-[12px] sm:block", meta.text)}>
+        {meta.label}
+      </span>
+
+      <span className="hidden w-[52px] shrink-0 text-right font-mono text-[11px] text-faint md:block">
+        {formatTime(message.received_at ?? message.sent_at)}
+      </span>
+    </Link>
+  );
+}
+
+/* ────────────────────────── mailbox card ────────────────────────── */
+
+function MailboxCard({
+  account,
+  selected,
+  syncing,
+  onSelect,
+  onSync,
+  onTogglePaused,
+  onPatch,
+  onDisconnect,
+}: {
+  account: MailAccount;
+  selected: boolean;
+  syncing: boolean;
+  onSelect: () => void;
+  onSync: () => void;
+  onTogglePaused: () => void;
+  onPatch: (patch: Partial<MailAccount>) => void;
+  onDisconnect: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border bg-wash px-3.5 py-3",
+        selected ? "border-highlight-line" : "border-line-soft",
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          className="min-w-0 flex-1 text-left"
+          onClick={onSelect}
+          title="Show only this mailbox"
+        >
+          <div className="truncate text-[13px] font-medium">{account.email}</div>
+          <div className="truncate text-[11.5px] text-faint">
+            {account.tenant_name ?? `client ${account.tenant_id}`} · {account.folder}
+          </div>
+        </button>
+        {account.auto_sync_enabled && !account.is_active && (
+          <span className="shrink-0 rounded-full border border-line bg-paper px-2 py-0.5 text-[10px] text-muted-foreground">
+            Paused
+          </span>
+        )}
+      </div>
+
+      {account.last_error && (
+        <div className="mt-2 flex items-start gap-1.5 text-[11.5px] text-flag">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="line-clamp-2">{account.last_error}</span>
+        </div>
+      )}
+
+      {/* Auto-check is the primary switch: off means manual-only, and
+          pause/resume has nothing to act on. Turning it back on also clears a
+          leftover pause, so "on" always means running. */}
+      <div className="mt-2.5 rounded-md border border-line-soft bg-surface p-2.5">
+        <div className="flex items-center gap-2">
+          <Switch
+            id={`auto-${account.id}`}
+            checked={account.auto_sync_enabled}
+            onCheckedChange={(v) =>
+              onPatch(
+                v ? { auto_sync_enabled: true, is_active: true } : { auto_sync_enabled: false },
+              )
+            }
+          />
+          <label htmlFor={`auto-${account.id}`} className="cursor-pointer text-[12px] font-medium">
+            Check automatically
+          </label>
+          {account.syncing_since && (
+            <span className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-faint">
+              <Loader2 className="h-3 w-3 animate-spin" /> checking
+            </span>
+          )}
+        </div>
+        {account.auto_sync_enabled && (
+          <>
+            <Select
+              value={String(account.sync_interval_seconds)}
+              onValueChange={(v) => onPatch({ sync_interval_seconds: Number(v) })}
+              disabled={!account.is_active}
+            >
+              <SelectTrigger className="mt-2 h-7 text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SYNC_INTERVALS.map((i) => (
+                  <SelectItem key={i.value} value={String(i.value)}>
+                    {i.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1.5 text-[10.5px] text-faint">
+              {account.is_active
+                ? nextRunLabel(account)
+                : "Paused — press play to resume. Fetch new mail still works."}
+            </p>
+          </>
+        )}
+      </div>
+
+      <div className="mt-2.5 flex items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-[12px]"
+          onClick={onSync}
+          disabled={syncing}
+        >
+          {syncing ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+          Fetch new mail
+        </Button>
+        {account.auto_sync_enabled && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            title={account.is_active ? "Pause automatic checking" : "Resume automatic checking"}
+            onClick={onTogglePaused}
+          >
+            {account.is_active ? (
+              <Pause className="h-3.5 w-3.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        )}
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 text-destructive hover:text-destructive"
+          title="Disconnect"
+          onClick={onDisconnect}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+        <span className="ml-auto text-[10.5px] text-faint">
+          {account.last_synced_at
+            ? `checked ${formatTime(account.last_synced_at, true)}`
+            : "never checked"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────── status helpers ────────────────────────── */
+
+type StatusMeta = { dot: string; text: string; label: string };
+
+/** Dot colour, label colour, and plain label for a message status. */
+function statusMeta(status: MailStatus): StatusMeta {
+  switch (status) {
+    case "Success":
+      return { dot: "bg-ok", text: "text-faint", label: "Read" };
+    case "Pending":
+      return { dot: "bg-highlight", text: "text-highlight", label: "Reading…" };
+    case "Failed":
+      return { dot: "bg-flag", text: "text-flag", label: "Needs attention" };
+    case "Skipped":
+      return { dot: "bg-faint", text: "text-faint", label: "Skipped" };
+    case "NoDocuments":
+      return { dot: "bg-faint", text: "text-faint", label: "No document" };
+  }
+}
+
+/** Plain-language label for a status, used in the filter and the badge. */
+export function statusLabel(status: MailStatus): string {
+  return statusMeta(status).label;
+}
+
+/** Editorial status pill — shared with the message detail screen. */
 export function StatusBadge({ status }: { status: MailStatus }) {
   const styles: Record<MailStatus, string> = {
-    Success:
-      "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-200 dark:border-emerald-500/30",
-    Failed:
-      "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-500/15 dark:text-rose-200 dark:border-rose-500/30",
-    Skipped:
-      "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-500/15 dark:text-amber-200 dark:border-amber-500/30",
-    NoDocuments: "bg-muted text-muted-foreground border-border",
-    Pending:
-      "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-500/15 dark:text-blue-200 dark:border-blue-500/30",
+    Success: "border-ok/30 bg-ok/10 text-ok",
+    Pending: "border-highlight-line bg-highlight-tint text-highlight",
+    Failed: "border-flag/40 bg-flag-tint text-flag",
+    Skipped: "border-line bg-wash text-muted-foreground",
+    NoDocuments: "border-line bg-wash text-muted-foreground",
   };
-  const label = status === "NoDocuments" ? "No documents" : status;
   return (
-    <span className={`inline-block text-[11px] px-2 py-0.5 rounded-full border ${styles[status]}`}>
-      {label}
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px]",
+        styles[status],
+      )}
+    >
+      {statusLabel(status)}
     </span>
   );
 }
@@ -732,28 +836,42 @@ function pageCountOf(message: MailMessageListItem): number | null {
   return message.merged_page_count ?? message.page_count ?? null;
 }
 
+/** "Today" / "Yesterday" / "12 Mar" for the group headings. */
+function dayBucketLabel(iso: string | null): string {
+  if (!iso) return "Undated";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "Undated";
+  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dayMs = 86_400_000;
+  const diff = Math.round((startOf(new Date()) - startOf(parsed)) / dayMs);
+  if (diff <= 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
 /** "next check in ~40s" — derived from the interval and the last sync time. */
 function nextRunLabel(account: MailAccount): string {
   const elapsed = secondsSince(account.last_synced_at);
-  if (elapsed === null) return "due on the next worker pass";
+  if (elapsed === null) return "due on the next pass";
   const remaining = Math.round(account.sync_interval_seconds - elapsed);
-  if (remaining <= 0) return "due on the next worker pass";
+  if (remaining <= 0) return "due on the next pass";
   if (remaining < 60) return `next check in ~${remaining}s`;
   return `next check in ~${Math.round(remaining / 60)}m`;
 }
 
 function EmptyMailboxes({ onConnect }: { onConnect: () => void }) {
   return (
-    <div className="rounded-xl border-2 border-dashed p-12 text-center">
-      <Mail className="h-12 w-12 text-muted-foreground/40 mx-auto" />
-      <h2 className="text-lg font-semibold mt-4">Connect a mailbox</h2>
-      <p className="text-sm text-muted-foreground mt-2 max-w-lg mx-auto">
-        Unread mail is fetched over IMAP and marked read once stored. Every document attachment on a
-        message is merged into a single PDF, and the subject, sender and body are passed to the
-        model as the document context.
+    <div className="mx-auto max-w-xl rounded-lg border border-line bg-surface px-8 py-12 text-center shadow-card">
+      <span className="mx-auto grid h-11 w-11 place-items-center rounded-md bg-wash text-muted-foreground">
+        <Mail className="h-5 w-5" />
+      </span>
+      <h1 className="mt-5 font-serif text-[24px] leading-tight">Connect a mailbox</h1>
+      <p className="mx-auto mt-2.5 max-w-md text-[13.5px] leading-relaxed text-muted-foreground">
+        Forward paperwork to a connected mailbox and we'll read each document as it arrives —
+        pulling the details you asked for and passing them wherever you need.
       </p>
-      <Button className="mt-5" onClick={onConnect}>
-        <Plug className="h-4 w-4" /> Connect mailbox
+      <Button className="mt-6" onClick={onConnect}>
+        <Plug className="h-4 w-4" /> Connect a mailbox
       </Button>
     </div>
   );

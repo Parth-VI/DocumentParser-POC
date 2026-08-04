@@ -20,26 +20,21 @@ import {
 import { AppHeader } from "@/components/AppHeader";
 import { FileUpload } from "@/components/extraction/FileUpload";
 import { NestedFieldList } from "@/components/extraction/FieldCard";
-import { JsonView } from "@/components/extraction/JsonView";
 import { JsonDiffSplit } from "@/components/extraction/JsonDiffSplit";
 import { PasteSchemaDialog } from "@/components/extraction/PasteSchemaDialog";
 import { TenantSelect, type Tenant } from "@/components/extraction/TenantConfig";
-import { FieldsPreview } from "@/components/extraction/FieldsPreview";
-import { EditFieldDialog } from "@/components/extraction/EditFieldDialog";
-import { ResultView } from "@/components/extraction/ResultView";
+import { ResultForm } from "@/components/extraction/ResultForm";
 import { isSpreadsheetFile } from "@/lib/file-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   AlertTriangle,
-  Braces,
   Check,
+  ChevronRight,
   ClipboardPaste,
   Copy,
   Download,
@@ -74,6 +69,7 @@ type NonDocumentError = {
     }>;
   };
 };
+
 function Studio() {
   const [file, setFile] = useState<File | null>(null);
   const [fields, setFields] = useState<FieldSpec[]>(() => [newField({ name: "" })]);
@@ -85,9 +81,7 @@ function Studio() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExtractionResponse | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
-  const [schemaAsJson, setSchemaAsJson] = useState(false);
-  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
-  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [previewExpanded, setPreviewExpanded] = useState(true);
   const [activeLocationPath, setActiveLocationPath] = useState<string | null>(null);
   const [extractError, setExtractError] = useState<NonDocumentError | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -97,11 +91,10 @@ function Studio() {
   const [hasRemoteSchema, setHasRemoteSchema] = useState(false);
   const [savedFields, setSavedFields] = useState<FieldSpec[]>([]);
   const [savingSchema, setSavingSchema] = useState(false);
+  const [advOpen, setAdvOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [showJson, setShowJson] = useState(false);
 
-  const savedSchemaJson = useMemo(
-    () => ({ fields: savedFields.map(serializeField) }),
-    [savedFields],
-  );
   const dirtySchema = useMemo(
     () =>
       JSON.stringify(fields.map(serializeField)) !==
@@ -137,7 +130,7 @@ function Studio() {
     if (!selectedTenant || savingSchema || !dirtySchema) return;
     setSavingSchema(true);
     const verb = hasRemoteSchema ? "Updating" : "Saving";
-    const toastId = toast.loading(`${verb} schema…`);
+    const toastId = toast.loading(`${verb} details…`);
     try {
       const res = await saveTenantSchema({
         tenantId: selectedTenant.id,
@@ -148,11 +141,11 @@ function Studio() {
       });
       setSavedFields(fields);
       setHasRemoteSchema(true);
-      toast.success(res.message ?? (hasRemoteSchema ? "Schema updated" : "Schema saved"), {
+      toast.success(res.message ?? (hasRemoteSchema ? "Details updated" : "Details saved"), {
         id: toastId,
       });
     } catch (e) {
-      toast.error(errorMessage(e, "Failed to save schema"), { id: toastId });
+      toast.error(errorMessage(e, "Couldn't save"), { id: toastId });
     } finally {
       setSavingSchema(false);
     }
@@ -170,7 +163,7 @@ function Studio() {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length) {
           setFields(parsed);
-          toast.success("Restored previous schema", {
+          toast.success("Restored your last setup", {
             action: {
               label: "Clear",
               onClick: () => {
@@ -203,43 +196,22 @@ function Studio() {
   const canExtract =
     !!file && (isSheet || (!!selectedTenant && fields.length > 0 && errors.length === 0));
 
-  // Name the actual blocker. Ordered by the sequence the user works through, so
-  // "select a tenant" isn't reported as "add a field".
+  // Name the actual blocker. Ordered by the sequence the user works through.
   const extractBlockedReason = useMemo(() => {
-    if (!file) return "Upload a document";
+    if (!file) return "Add a document to get started";
     if (isSheet) return "";
-    if (!selectedTenant) return "Select a tenant";
-    if (fields.length === 0) return "Add at least one field";
-    if (errors.length) return `Fix ${errors.length} schema error${errors.length > 1 ? "s" : ""}`;
+    if (!selectedTenant) return "Choose a client first";
+    if (fields.length === 0) return "Add at least one detail to capture";
+    if (errors.length)
+      return `Fix ${errors.length} problem${errors.length > 1 ? "s" : ""} in the details`;
     return "";
   }, [file, isSheet, selectedTenant, fields.length, errors.length]);
 
   const applyPastedFields = (next: FieldSpec[]) => {
-    if (fields.some((f) => f.name) && !confirm("Replace current schema with the pasted JSON?"))
+    if (fields.some((f) => f.name) && !confirm("Replace the current details with the pasted data?"))
       return;
     setFields(next);
-    toast.success("Schema loaded from JSON");
-  };
-
-  const editingField = useMemo(
-    () => fields.find((f) => f.id === editingFieldId) ?? null,
-    [fields, editingFieldId],
-  );
-  const editingSiblingNames = useMemo(
-    () =>
-      fields
-        .filter((f) => f.id !== editingFieldId)
-        .map((f) => f.name.trim())
-        .filter(Boolean),
-    [fields, editingFieldId],
-  );
-
-  const updateFieldById = (next: FieldSpec) => {
-    setFields((curr) => curr.map((f) => (f.id === next.id ? next : f)));
-  };
-
-  const deleteFieldById = (id: string) => {
-    setFields((curr) => curr.filter((f) => f.id !== id));
+    toast.success("Details loaded");
   };
 
   // Group source locations by JSONPath so ResultView can show pin icons per field.
@@ -253,11 +225,8 @@ function Studio() {
     return m;
   }, [result?.locations]);
 
-  /**
-   * "located / total" over non-null leaves — the honest denominator, since only
-   * leaves can be matched to a position. Tells you at a glance whether the OCR
-   * pass found most values or barely any.
-   */
+  const foundCount = useMemo(() => (result ? countLeaves(result.data) : 0), [result]);
+
   const locatedSummary = useMemo(() => {
     if (!result?.locations?.length) return null;
     const total = countLeaves(result.data);
@@ -281,8 +250,7 @@ function Studio() {
     setExtractError(null);
   }, [file]);
 
-  // Extraction is a 10–60s round trip (OCR + LLM). Count real seconds rather
-  // than animating a bar that implies progress the backend never reports.
+  // Extraction is a 10–60s round trip (OCR + LLM). Count real seconds.
   useEffect(() => {
     if (!loading) {
       setElapsed(0);
@@ -296,8 +264,6 @@ function Studio() {
     return () => window.clearInterval(id);
   }, [loading]);
 
-  // A result with source locations is only useful next to the document, so open
-  // the preview instead of waiting for the user to discover the locate pins.
   useEffect(() => {
     if (result?.locations?.length) setPreviewExpanded(true);
   }, [result]);
@@ -306,11 +272,11 @@ function Studio() {
     if (!canExtract) return;
     setLoading(true);
     setExtractError(null);
+    setShowJson(false);
     setTab("result");
     try {
       const res = await extractDocument({
         file: file!,
-        // Spreadsheets don't use a tenant schema / document hints / relevance check.
         tenantId: isSheet ? null : selectedTenant?.id,
         model,
         docType: isSheet ? undefined : docType || undefined,
@@ -318,15 +284,14 @@ function Studio() {
         skipRelevanceCheck: isSheet ? false : (overrides?.skipRelevanceCheck ?? skipRelevanceCheck),
       });
       setResult(res);
-      toast.success("Extraction complete", { duration: 2000 });
+      toast.success("Done — here's what we found", { duration: 2000 });
     } catch (e) {
-      // A relevance rejection arrives as structured detail → dedicated card with retry.
       const detail = e instanceof ApiError ? e.detail : null;
       if (detail && typeof detail === "object" && (detail as { code?: string }).code) {
         setExtractError(detail as NonDocumentError);
         return;
       }
-      toast.error(errorMessage(e, "Extraction failed"));
+      toast.error(errorMessage(e, "We couldn't read this one"));
     } finally {
       setLoading(false);
     }
@@ -351,12 +316,10 @@ function Studio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file, fields, docType, docContext, model, canExtract]);
 
-  /** Prefer the full payload (already a JSON string) when the backend truncated `data`. */
   const resultJson = () => {
     if (!result) return "";
     if (result.full_payload_json) {
       try {
-        // Pretty-print if the string is valid JSON; otherwise keep the raw string.
         return JSON.stringify(JSON.parse(result.full_payload_json), null, 2);
       } catch {
         return result.full_payload_json;
@@ -383,466 +346,642 @@ function Studio() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `extraction-${Date.now()}.json`;
+    a.download = `results-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const docTypeChips = ["service_invoice", "repair_order", "annual_inspection", "purchase_order"];
-
-  // The handler accepts either modifier; label whichever one this platform uses.
-  // Computed after mount so the SSR markup and first client render agree.
   const shortcutLabel = isMac ? "⌘↵" : "Ctrl+↵";
 
+  const showResult = tab === "result" && (loading || !!result || !!extractError);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20">
+    // On desktop the app is locked to the viewport — the window itself never
+    // scrolls; the document pane and the capture/results pane scroll on their own.
+    <div className="flex min-h-screen flex-col bg-paper text-foreground lg:h-screen">
       <AppHeader
         right={
-          <div className="text-xs text-muted-foreground hidden md:block">
-            <kbd className="rounded border bg-muted px-1.5 py-0.5">{shortcutLabel}</kbd> extract
+          <div className="hidden items-center gap-1.5 text-[11px] text-faint md:flex">
+            <kbd className="rounded border border-line bg-wash px-1.5 py-0.5 font-mono">
+              {shortcutLabel}
+            </kbd>
+            to read
           </div>
         }
       />
 
-      <main className="max-w-[1400px] mx-auto px-6 py-6">
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* LEFT */}
-          <div className="space-y-6">
-            <section>
-              <SectionTitle n={1} title="Upload Document" />
-              <FileUpload
-                file={file}
-                onFile={setFile}
-                previewExpanded={previewExpanded}
-                onPreviewExpandedChange={setPreviewExpanded}
-                sourceHighlights={result?.locations ?? null}
-                activeLocationPath={activeLocationPath}
+      <main className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+        {/* ── LEFT · the document ─────────────────────────────── */}
+        <section className="flex min-h-[40vh] flex-col border-b border-line bg-wash lg:min-h-0 lg:overflow-hidden lg:border-b-0 lg:border-r">
+          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-line px-5">
+            <span className="text-[11px] uppercase tracking-[0.09em] text-faint">
+              {file ? "Document" : "Step 1 — add a document"}
+            </span>
+            <div className="flex-1" />
+            {file && !loading && (
+              <button
+                onClick={() => {
+                  setFile(null);
+                  setResult(null);
+                  setTab("schema");
+                }}
+                className="text-[12px] text-faint transition-colors hover:text-ink"
+              >
+                Replace
+              </button>
+            )}
+          </div>
+
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 flex-col p-6 lg:overflow-y-auto",
+              (!file || (extractError && !loading)) && "items-center justify-center",
+            )}
+          >
+            {extractError && !loading ? (
+              <NonDocumentErrorCard
+                error={extractError}
+                onRetry={retrySkippingRelevanceCheck}
+                onDismiss={() => setExtractError(null)}
               />
-            </section>
-
-            <section className="space-y-4 rounded-xl border bg-card p-4">
-              <SectionTitle n={2} title="Document Settings" inline />
-              <SheetDisabled active={isSheet}>
-                <TenantSelect
-                  selected={selectedTenant}
-                  onChange={handleTenantChange}
-                  onLoad={handleTenantSchemaLoad}
+            ) : (
+              <div className="w-full">
+                <FileUpload
+                  file={file}
+                  onFile={setFile}
+                  previewExpanded={previewExpanded}
+                  onPreviewExpandedChange={setPreviewExpanded}
+                  sourceHighlights={result?.locations ?? null}
+                  activeLocationPath={activeLocationPath}
                 />
-              </SheetDisabled>
-              <SheetDisabled active={isSheet}>
-                <div>
-                  <Label className="text-xs">Document Type</Label>
-                  <Input
-                    value={docType}
-                    onChange={(e) => setDocType(e.target.value)}
-                    placeholder="e.g. service_invoice"
-                    className="font-mono mt-1"
-                  />
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {docTypeChips.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => setDocType(c)}
-                        className="text-xs px-2 py-0.5 rounded-full border bg-background hover:bg-accent transition-colors font-mono"
-                      >
-                        {c}
-                      </button>
-                    ))}
+                {file && loading && (
+                  <div className="mt-4 flex items-center gap-3 rounded-md border border-line bg-surface px-4 py-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-highlight" />
+                    <span className="flex-1 text-[13px] text-muted-foreground">
+                      Reading the document…
+                    </span>
+                    <span className="font-mono text-[12px] tabular-nums text-faint">
+                      {elapsed}s
+                    </span>
                   </div>
-                </div>
-              </SheetDisabled>
-              <SheetDisabled active={isSheet}>
-                <div>
-                  <Label className="text-xs">Document Context</Label>
-                  <Textarea
-                    value={docContext}
-                    onChange={(e) => setDocContext(e.target.value)}
-                    className="mt-1 min-h-20"
-                    placeholder="Any hints about the document, vendor, or layout that will help the AI extract the right fields…"
-                  />
-                </div>
-              </SheetDisabled>
-              <SheetDisabled active={isSheet}>
-                <div className="flex items-start gap-3">
-                  <Switch
-                    checked={skipRelevanceCheck}
-                    onCheckedChange={setSkipRelevanceCheck}
-                    id="skip-relevance"
-                    className="mt-0.5"
-                  />
-                  <div>
-                    <Label htmlFor="skip-relevance" className="text-sm">
-                      Skip relevance check
-                    </Label>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Default OFF: the backend pre-screens the file to detect non-document content
-                      (random photos, blanks, scans of unrelated images, etc.). If the file is
-                      judged irrelevant, the LLM is <strong>not called</strong> and{" "}
-                      <strong>no tokens are spent</strong>
-                    </p>
-                  </div>
-                </div>
-              </SheetDisabled>
-              <div>
-                <Label className="text-xs mb-2 block" id="model-label">
-                  Model
-                </Label>
-                {/* Radiogroup semantics: it's a single choice, so screen readers and
-                    arrow keys should treat it that way rather than as two buttons. */}
-                <div
-                  className="inline-flex rounded-lg border bg-background p-1"
-                  role="radiogroup"
-                  aria-labelledby="model-label"
-                >
-                  {(["claude", "openai"] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setModel(m)}
-                      type="button"
-                      role="radio"
-                      aria-checked={model === m}
-                      tabIndex={model === m ? 0 : -1}
-                      onKeyDown={(e) => {
-                        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-                          e.preventDefault();
-                          setModel(model === "claude" ? "openai" : "claude");
-                        }
-                      }}
-                      className={`px-4 py-1.5 text-sm rounded-md transition-colors capitalize focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
-                        model === m
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Which LLM formats the result. Claude is the default.
-                </p>
+                )}
               </div>
-            </section>
+            )}
+          </div>
+        </section>
 
-            <SheetDisabled active={isSheet}>
-              <section className="space-y-3 rounded-xl border bg-card p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <SectionTitle n={3} title="Field Schema" inline />
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setPasteOpen(true)}>
-                      <ClipboardPaste className="h-4 w-4" /> Paste JSON
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleSaveSchema}
-                      disabled={
-                        !selectedTenant ||
-                        !dirtySchema ||
-                        savingSchema ||
-                        fields.length === 0 ||
-                        errors.length > 0
-                      }
-                      title={
-                        !selectedTenant
-                          ? "Select a tenant first"
-                          : !dirtySchema
-                            ? "No changes to save"
-                            : hasRemoteSchema
-                              ? "Update tenant schema"
-                              : "Save tenant schema"
-                      }
-                    >
-                      {savingSchema ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                          {hasRemoteSchema ? "Updating…" : "Saving…"}
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-4 w-4" /> {hasRemoteSchema ? "Update" : "Save"}
-                        </>
-                      )}
-                    </Button>
+        {/* ── RIGHT · capture / results ───────────────────────── */}
+        <section className="flex min-h-[calc(100vh-3.25rem)] flex-col bg-surface lg:min-h-0 lg:overflow-hidden">
+          <div className="flex h-11 shrink-0 items-center gap-5 border-b border-line px-5">
+            {result || loading ? (
+              <>
+                <PanelTab active={tab === "schema"} onClick={() => setTab("schema")}>
+                  What to capture
+                </PanelTab>
+                <PanelTab active={tab === "result"} onClick={() => setTab("result")}>
+                  Results
+                  {result && <span className="ml-1.5 inline-block h-1 w-1 rounded-full bg-ok" />}
+                </PanelTab>
+              </>
+            ) : (
+              <span className="text-[11px] uppercase tracking-[0.09em] text-faint">
+                Step 2 — choose what to capture
+              </span>
+            )}
+            <div className="flex-1" />
+            <span className="font-mono text-[11px] text-faint">
+              {showResult && result
+                ? `${foundCount} found`
+                : `${fields.length} ${fields.length === 1 ? "detail" : "details"}`}
+            </span>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {showResult ? (
+              <ResultsPane
+                loading={loading}
+                elapsed={elapsed}
+                model={model}
+                result={result}
+                extractError={extractError}
+                showJson={showJson}
+                locationsByPath={locationsByPath}
+                activeLocationPath={activeLocationPath}
+                onLocate={onLocateField}
+                onClearHighlight={() => setActiveLocationPath(null)}
+                foundCount={foundCount}
+                locatedSummary={locatedSummary}
+                isSheet={isSheet}
+                detailsOpen={detailsOpen}
+                onToggleDetails={() => setDetailsOpen((v) => !v)}
+              />
+            ) : (
+              <div className="space-y-6 px-5 py-6">
+                <p className="max-w-[54ch] text-[13.5px] leading-relaxed text-muted-foreground">
+                  Each item below is one piece of information we'll look for in the document. Give
+                  it a plain name and pick what kind of value it is.
+                </p>
+
+                {!isSheet && (
+                  <ClientPicker
+                    selected={selectedTenant}
+                    onChange={handleTenantChange}
+                    onLoad={handleTenantSchemaLoad}
+                  />
+                )}
+
+                {isSheet ? (
+                  <div className="rounded-md border border-line-soft bg-wash px-4 py-3 text-[13px] text-muted-foreground">
+                    This is a spreadsheet — no setup needed. We'll read every row for you when you
+                    press <span className="text-ink">Read document</span>.
                   </div>
-                </div>
-
-                {selectedTenant && dirtySchema && (
-                  <div className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                    Unsaved changes — click {hasRemoteSchema ? "Update" : "Save"} to apply.
+                ) : (
+                  <div>
+                    <NestedFieldList
+                      fields={fields}
+                      onChange={setFields}
+                      depth={0}
+                      errors={errors}
+                    />
                   </div>
                 )}
 
-                <div className="rounded-xl border bg-card/30 p-3 max-h-[60vh] overflow-y-auto">
-                  <NestedFieldList fields={fields} onChange={setFields} depth={0} errors={errors} />
-                </div>
-              </section>
-            </SheetDisabled>
+                {!isSheet && (
+                  <Advanced open={advOpen} onToggle={() => setAdvOpen((v) => !v)}>
+                    <div className="grid gap-5">
+                      <div>
+                        <MicroLabel>Reading engine</MicroLabel>
+                        <div
+                          className="mt-2 inline-flex rounded-md border border-line bg-paper p-1"
+                          role="radiogroup"
+                          aria-label="Reading engine"
+                        >
+                          {(["claude", "openai"] as const).map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => setModel(m)}
+                              type="button"
+                              role="radio"
+                              aria-checked={model === m}
+                              tabIndex={model === m ? 0 : -1}
+                              onKeyDown={(e) => {
+                                if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                                  e.preventDefault();
+                                  setModel(model === "claude" ? "openai" : "claude");
+                                }
+                              }}
+                              className={cn(
+                                "rounded px-3 py-1 text-[13px] capitalize transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                                model === m
+                                  ? "bg-ink text-paper"
+                                  : "text-muted-foreground hover:text-ink",
+                              )}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 text-[12px] text-faint">
+                          Which reader formats the answer. Claude is the default.
+                        </p>
+                      </div>
 
-            <div className="sticky bottom-4 z-10 rounded-xl border bg-background/95 backdrop-blur shadow-lg p-3 space-y-2">
-              {/* The service extracts with the tenant's SAVED config — the editor's
-                  unsaved edits are not sent, so say so before tokens are spent. */}
-              {!isSheet && selectedTenant && dirtySchema && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 text-xs px-2.5 py-2 flex items-start gap-2">
-                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <div>
+                        <MicroLabel>Kind of document (optional)</MicroLabel>
+                        <Input
+                          value={docType}
+                          onChange={(e) => setDocType(e.target.value)}
+                          placeholder="e.g. service invoice"
+                          className="mt-2 font-mono"
+                        />
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {docTypeChips.map((c) => (
+                            <button
+                              key={c}
+                              onClick={() => setDocType(c)}
+                              className="rounded-full border border-line bg-paper px-2.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-ink hover:text-ink"
+                            >
+                              {c}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <MicroLabel>Hints for the reader (optional)</MicroLabel>
+                        <Textarea
+                          value={docContext}
+                          onChange={(e) => setDocContext(e.target.value)}
+                          className="mt-2 min-h-20"
+                          placeholder="Anything about the document, vendor, or layout that will help us find the right values…"
+                        />
+                      </div>
+
+                      <label className="flex cursor-pointer items-start gap-3">
+                        <Switch
+                          checked={!skipRelevanceCheck}
+                          onCheckedChange={(v) => setSkipRelevanceCheck(!v)}
+                          id="double-check"
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="text-[13.5px] font-medium">
+                            Double-check it's a real document
+                          </span>
+                          <span className="mt-1 block text-[12px] leading-relaxed text-faint">
+                            We'll take a quick look first and stop if the file doesn't seem to be
+                            paperwork — so nothing is spent reading a random photo or blank scan.
+                          </span>
+                        </span>
+                      </label>
+
+                      <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
+                        <span className="mr-1 text-[12px] text-faint">Details tools</span>
+                        <Button variant="outline" size="sm" onClick={() => setPasteOpen(true)}>
+                          <ClipboardPaste className="h-3.5 w-3.5" /> Paste data
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSaveSchema}
+                          disabled={
+                            !selectedTenant ||
+                            !dirtySchema ||
+                            savingSchema ||
+                            fields.length === 0 ||
+                            errors.length > 0
+                          }
+                          title={
+                            !selectedTenant
+                              ? "Choose a client first"
+                              : !dirtySchema
+                                ? "No changes to save"
+                                : hasRemoteSchema
+                                  ? "Update this client's saved details"
+                                  : "Save these details for this client"
+                          }
+                        >
+                          {savingSchema ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />{" "}
+                              {hasRemoteSchema ? "Updating…" : "Saving…"}
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-3.5 w-3.5" /> {hasRemoteSchema ? "Update" : "Save"}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </Advanced>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── sticky action footer ── */}
+          <div className="sticky bottom-0 shrink-0 border-t border-line bg-surface/95 px-5 py-3.5 backdrop-blur-sm">
+            {showResult && result && !loading ? (
+              <div className="space-y-2.5">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button onClick={downloadResult}>
+                    <Download className="h-4 w-4" /> Download results
+                  </Button>
+                  <Button variant="outline" onClick={copyResult}>
+                    {copiedResult ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {copiedResult ? "Copied" : "Copy"}
+                  </Button>
+                  <div className="flex-1" />
+                  <button
+                    onClick={() => setShowJson((v) => !v)}
+                    className="text-[12px] text-faint underline decoration-line underline-offset-2 transition-colors hover:text-muted-foreground"
+                  >
+                    {showJson ? "Back to plain view" : "View as data (JSON)"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {!isSheet && selectedTenant && dirtySchema && (
+                  <div className="flex items-start gap-2 rounded-md border border-flag/30 bg-flag-tint px-2.5 py-2 text-[12px] text-flag">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Reading uses this client's <strong>saved</strong> details. Your edits won't
+                      apply until you {hasRemoteSchema ? "Update" : "Save"} them (under Advanced).
+                    </span>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    size="lg"
+                    className="h-11 flex-1 text-[15px] sm:flex-none sm:px-8"
+                    disabled={!canExtract || loading}
+                    onClick={() => extract()}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Reading…{" "}
+                        {elapsed > 0 && `${elapsed}s`}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" /> Read document
+                      </>
+                    )}
+                  </Button>
+                  <p className="min-w-0 flex-1 text-[12px] leading-snug text-faint">
+                    {canExtract ? (
+                      isSheet ? (
+                        <>We'll read every row and lay it out for you.</>
+                      ) : (
+                        <>
+                          We'll read the whole document and fill in the{" "}
+                          {fields.length === 1 ? "detail" : `${fields.length} details`} above.
+                        </>
+                      )
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        {extractBlockedReason}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      </main>
+
+      <PasteSchemaDialog open={pasteOpen} onOpenChange={setPasteOpen} onApply={applyPastedFields} />
+    </div>
+  );
+}
+
+/* ────────────────────────── results pane ────────────────────────── */
+
+function ResultsPane({
+  loading,
+  elapsed,
+  model,
+  result,
+  extractError,
+  showJson,
+  locationsByPath,
+  activeLocationPath,
+  onLocate,
+  onClearHighlight,
+  foundCount,
+  locatedSummary,
+  isSheet,
+  detailsOpen,
+  onToggleDetails,
+}: {
+  loading: boolean;
+  elapsed: number;
+  model: string;
+  result: ExtractionResponse | null;
+  extractError: NonDocumentError | null;
+  showJson: boolean;
+  locationsByPath: Map<string, FieldLocation[]>;
+  activeLocationPath: string | null;
+  onLocate: (path: string) => void;
+  onClearHighlight: () => void;
+  foundCount: number;
+  locatedSummary: string | null;
+  isSheet: boolean;
+  detailsOpen: boolean;
+  onToggleDetails: () => void;
+}) {
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center px-5 py-16 text-center">
+        <Loader2 className="h-6 w-6 animate-spin text-highlight" />
+        <p className="mt-4 text-[14px] text-muted-foreground">
+          Reading the document… <span className="font-mono tabular-nums">{elapsed}s</span>
+        </p>
+        <p className="mt-1 text-[12px] text-faint">
+          A careful read of {model === "openai" ? "OpenAI" : "Claude"} — usually 10 to 60 seconds.
+        </p>
+        <div className="mt-5 h-px w-40 overflow-hidden bg-line">
+          <div className="h-full w-1/3 animate-[pulse_1.4s_ease-in-out_infinite] bg-highlight" />
+        </div>
+      </div>
+    );
+  }
+
+  if (extractError) {
+    return (
+      <div className="px-5 py-10 text-center text-[13px] text-muted-foreground">
+        We stopped before reading this one — see the note on the left.
+      </div>
+    );
+  }
+
+  if (!result) {
+    return (
+      <div className="flex flex-col items-center px-5 py-16 text-center">
+        <FileSearch className="h-8 w-8 text-faint" />
+        <p className="mt-4 max-w-[40ch] text-[13.5px] leading-relaxed text-muted-foreground">
+          Add a document and choose what to capture, then press{" "}
+          <span className="text-ink">Read document</span>. What we find appears here.
+        </p>
+      </div>
+    );
+  }
+
+  const seconds = (result.response_time_ms / 1000).toFixed(1);
+  const hasTables = containsRowArray(result.data);
+
+  return (
+    <div className="space-y-5 px-5 py-6">
+      {/* success line */}
+      <div className="flex items-baseline gap-2.5">
+        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
+        <div className="min-w-0">
+          <h2 className="font-serif text-[20px] leading-tight">
+            We found {foundCount} {foundCount === 1 ? "detail" : "details"}.
+          </h2>
+          <p className="mt-1 text-[12.5px] text-muted-foreground">
+            Read in {seconds}s{result.page_count ? ` · ${result.page_count} pages` : ""}. You can
+            check each value against the document.
+            {hasTables &&
+              " The count includes every line inside the tables — open a row with its arrow to see them."}
+          </p>
+        </div>
+      </div>
+
+      {result.full_payload_json && (
+        <div className="flex items-start gap-2 rounded-md border border-highlight-line bg-highlight-tint px-3 py-2 text-[12px] text-muted-foreground">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-highlight" />
+          <div>
+            <strong className="text-ink">Preview shortened.</strong> Showing the first 100 rows for
+            speed — the full set is included when you download.
+          </div>
+        </div>
+      )}
+
+      {showJson ? (
+        <JsonDiffSplit source={result.data} />
+      ) : (
+        <>
+          {result.locations ? (
+            <>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-faint">
+                <span>
+                  Click a <Locate className="inline h-3 w-3 align-[-2px] text-highlight" /> to show
+                  where a value came from on the document.
+                </span>
+                {activeLocationPath && (
+                  <button
+                    type="button"
+                    onClick={onClearHighlight}
+                    className="ml-auto underline decoration-line underline-offset-2 hover:text-ink"
+                  >
+                    Clear highlight
+                  </button>
+                )}
+              </div>
+              <ResultForm
+                data={result.data}
+                locationsByPath={locationsByPath}
+                activePath={activeLocationPath}
+                onLocate={onLocate}
+              />
+            </>
+          ) : (
+            <>
+              {!isSheet && (
+                <div className="flex items-start gap-1.5 text-[12px] text-faint">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    Extraction uses the <strong>saved</strong> schema. Your unsaved edits won't
-                    apply until you click {hasRemoteSchema ? "Update" : "Save"}.
+                    We couldn't line these values up with spots on the page for this document, so
+                    there's nothing to highlight — the values themselves are still complete.
                   </span>
                 </div>
               )}
-              <Button
-                size="lg"
-                className="w-full h-12 text-base"
-                disabled={!canExtract || loading}
-                onClick={() => extract()}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" /> Extracting…{" "}
-                    {elapsed > 0 && `${elapsed}s`}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-5 w-5" /> Extract Document
-                  </>
-                )}
-              </Button>
-              {canExtract ? (
-                // Confirm what this run will actually do — every input lives in a
-                // different section, so restate them at the point of no return.
-                <div className="text-xs text-muted-foreground text-center">
-                  {isSheet ? (
-                    <>
-                      Spreadsheet · <span className="font-medium text-foreground">{model}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-medium text-foreground">{selectedTenant?.name}</span>
-                      {" · "}
-                      <span className="font-medium text-foreground">{model}</span>
-                      {" · "}
-                      relevance check {skipRelevanceCheck ? "skipped" : "on"}
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1.5">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  {extractBlockedReason}
-                </div>
-              )}
-            </div>
-          </div>
+              <ResultForm
+                data={result.data}
+                locationsByPath={locationsByPath}
+                activePath={activeLocationPath}
+                onLocate={onLocate}
+              />
+            </>
+          )}
+        </>
+      )}
 
-          {/* RIGHT */}
-          <div className="lg:sticky lg:top-20 self-start">
-            <Tabs value={tab} onValueChange={(v) => setTab(v as "schema" | "result")}>
-              <TabsList>
-                <TabsTrigger value="schema">Schema</TabsTrigger>
-                <TabsTrigger value="result">
-                  Result{" "}
-                  {result && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />}
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="schema" className="mt-3 space-y-3">
-                <SheetDisabled active={isSheet}>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <Braces className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">Schema preview</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Label
-                          htmlFor="schema-json"
-                          className="text-xs text-muted-foreground cursor-pointer"
-                        >
-                          Show as JSON
-                        </Label>
-                        <Switch
-                          id="schema-json"
-                          checked={schemaAsJson}
-                          onCheckedChange={setSchemaAsJson}
-                        />
-                      </div>
-                    </div>
-                    {savedFields.length === 0 ? (
-                      <div className="rounded-lg border-2 border-dashed p-8 text-center text-xs text-muted-foreground">
-                        {selectedTenant ? (
-                          <>
-                            No saved schema yet. Edit fields on the left and click{" "}
-                            <strong>{hasRemoteSchema ? "Update" : "Save"}</strong> to preview them
-                            here.
-                          </>
-                        ) : (
-                          <>Select a tenant and save a schema to preview it here.</>
-                        )}
-                      </div>
-                    ) : schemaAsJson ? (
-                      <JsonView value={savedSchemaJson} />
-                    ) : (
-                      <div className="max-h-[70vh] overflow-y-auto">
-                        <FieldsPreview
-                          fields={savedFields}
-                          errors={[]}
-                          onEdit={setEditingFieldId}
-                          onDelete={deleteFieldById}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </SheetDisabled>
-              </TabsContent>
-              <TabsContent value="result" className="mt-3 space-y-3">
-                {loading ? (
-                  <div className="rounded-lg border bg-card p-8 text-center">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
-                    <p className="text-sm text-muted-foreground mt-3">
-                      Extracting structured data…{" "}
-                      <span className="font-mono tabular-nums">{elapsed}s</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground/80 mt-1">
-                      OCR then {model} — usually 10–60s depending on page count.
-                    </p>
-                    {/* Indeterminate: the backend reports no progress, so don't fake a percentage. */}
-                    <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div className="h-full w-1/3 rounded-full bg-primary animate-[pulse_1.4s_ease-in-out_infinite]" />
-                    </div>
-                  </div>
-                ) : extractError ? (
-                  <NonDocumentErrorCard
-                    error={extractError}
-                    onRetry={retrySkippingRelevanceCheck}
-                    onDismiss={() => setExtractError(null)}
-                  />
-                ) : result ? (
-                  <>
-                    <div className="flex flex-wrap gap-1.5 text-xs">
-                      <Badge variant="secondary">Model: {result.model}</Badge>
-                      <Badge variant="secondary">OCR: {result.ocr_engine ?? "—"}</Badge>
-                      <Badge variant="secondary">Vision: {result.used_vision ? "yes" : "no"}</Badge>
-                      <Badge variant="secondary">Pages: {result.page_count}</Badge>
-                      <Badge variant="secondary">
-                        Time: {(result.response_time_ms / 1000).toFixed(2)} s
-                      </Badge>
-                      {result.cost != null && (
-                        <Badge variant="secondary">Cost: ${result.cost.toFixed(4)}</Badge>
-                      )}
-                      {result.total_tokens != null && (
-                        <Badge variant="secondary">
-                          Tokens: {result.total_tokens.toLocaleString()}
-                        </Badge>
-                      )}
-                      {result.document_type && (
-                        <Badge variant="secondary">Type: {result.document_type}</Badge>
-                      )}
-                      {locatedSummary && (
-                        <Badge
-                          variant="secondary"
-                          title="Values matched back to a position on the page"
-                        >
-                          Located: {locatedSummary}
-                        </Badge>
-                      )}
-                    </div>
-                    {result.full_payload_json && (
-                      <div className="rounded-md border border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100 text-xs px-3 py-2 flex items-start gap-2">
-                        <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" />
-                        <div>
-                          <strong>Preview truncated.</strong> Showing the first 100 rows only for
-                          performance. The complete dataset will be included when you click{" "}
-                          <strong>Download JSON</strong>.
-                        </div>
-                      </div>
-                    )}
-                    {result.locations ? (
-                      <>
-                        <div className="min-w-0">
-                          <div className="text-xs text-muted-foreground mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="font-medium">
-                              Extracted result with source locations
-                            </span>
-                            <span className="text-muted-foreground/80">
-                              — click a <Locate className="inline h-3 w-3 align-[-2px]" /> pin to
-                              highlight it on the document (may not be accurate)
-                            </span>
-                            {activeLocationPath && (
-                              <button
-                                type="button"
-                                onClick={() => setActiveLocationPath(null)}
-                                className="ml-auto underline underline-offset-2 hover:text-foreground"
-                              >
-                                Clear highlight
-                              </button>
-                            )}
-                          </div>
-                          <ResultView
-                            data={result.data}
-                            locationsByPath={locationsByPath}
-                            activePath={activeLocationPath}
-                            onLocate={onLocateField}
-                          />
-                        </div>
-                        <JsonDiffSplit source={result.data} />
-                      </>
-                    ) : (
-                      <>
-                        {/* Absent locations look like a bug otherwise — name the cause. */}
-                        {!isSheet && (
-                          <div className="text-xs text-muted-foreground flex items-start gap-1.5">
-                            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                            <span>
-                              No source locations for this run — the page had no OCR text to match
-                              against (image-only scan with OCR disabled, or a vision-only pass).
-                            </span>
-                          </div>
-                        )}
-                        <JsonDiffSplit source={result.data} />
-                      </>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={downloadResult}>
-                        <Download className="h-4 w-4" /> Download JSON
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={copyResult}>
-                        {copiedResult ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                        {copiedResult ? "Copied" : "Copy JSON"}
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="rounded-lg border-2 border-dashed p-10 text-center">
-                    <FileSearch className="h-10 w-10 text-muted-foreground/50 mx-auto" />
-                    <p className="text-sm text-muted-foreground mt-3">
-                      Upload a document, define your fields on the left, then click{" "}
-                      <strong>Extract</strong>.<br />
-                      The structured result will appear here.
-                    </p>
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+      {/* quiet, technical "details" expander */}
+      <div>
+        <button
+          onClick={onToggleDetails}
+          className="inline-flex items-center gap-1.5 font-mono text-[11px] text-faint transition-colors hover:text-muted-foreground"
+        >
+          <ChevronRight
+            className={cn("h-3 w-3 transition-transform", detailsOpen && "rotate-90")}
+          />
+          Read in {seconds}s · {result.page_count ?? "—"} pages · details
+        </button>
+        {detailsOpen && (
+          <div className="mt-2.5 grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-x-5 gap-y-2 font-mono text-[11px] text-faint">
+            <Detail k="reader" v={`${result.document_type ?? "auto"} · ${result.model}`} />
+            <Detail k="text detection" v={result.ocr_engine ?? "—"} />
+            <Detail k="vision" v={result.used_vision ? "yes" : "no"} />
+            {result.total_tokens != null && (
+              <Detail k="units used" v={result.total_tokens.toLocaleString()} />
+            )}
+            {result.cost != null && <Detail k="cost" v={`$${result.cost.toFixed(4)}`} />}
+            {locatedSummary && <Detail k="located" v={locatedSummary} />}
           </div>
-        </div>
-      </main>
-      <PasteSchemaDialog open={pasteOpen} onOpenChange={setPasteOpen} onApply={applyPastedFields} />
-      <EditFieldDialog
-        open={!!editingField}
-        field={editingField}
-        siblingNames={editingSiblingNames}
-        onOpenChange={(v) => {
-          if (!v) setEditingFieldId(null);
-        }}
-        onSave={(next) => {
-          updateFieldById(next);
-          setEditingFieldId(null);
-        }}
-      />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Detail({ k, v }: { k: string; v: string }) {
+  return (
+    <div>
+      <div className="text-faint/70">{k}</div>
+      <div className="text-muted-foreground">{v}</div>
+    </div>
+  );
+}
+
+/* ────────────────────────── small pieces ────────────────────────── */
+
+function MicroLabel({ children }: { children: React.ReactNode }) {
+  return <span className="text-[11px] uppercase tracking-[0.09em] text-faint">{children}</span>;
+}
+
+function PanelTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center border-b py-0.5 text-[13px] transition-colors",
+        active ? "border-ink font-medium text-ink" : "border-transparent text-faint hover:text-ink",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ClientPicker({
+  selected,
+  onChange,
+  onLoad,
+}: {
+  selected: Tenant | null;
+  onChange: (t: Tenant | null) => void;
+  onLoad: (fields: FieldSpec[], hasRemote: boolean, config: TenantSchema | null) => void;
+}) {
+  return (
+    <div className="rounded-md border border-line-soft bg-wash px-4 py-3.5">
+      <div className="flex items-center gap-1.5">
+        <MicroLabel>Client</MicroLabel>
+        <span className="text-flag" title="Required">
+          ·
+        </span>
+      </div>
+      <div className="mt-2">
+        <TenantSelect selected={selected} onChange={onChange} onLoad={onLoad} />
+      </div>
+    </div>
+  );
+}
+
+function Advanced({
+  open,
+  onToggle,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-t border-line-soft pt-4">
+      <button
+        onClick={onToggle}
+        className="inline-flex items-center gap-1.5 text-[12.5px] text-faint transition-colors hover:text-ink"
+      >
+        <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} />
+        Advanced options
+      </button>
+      {open && (
+        <div className="mt-4 rounded-md border border-line-soft bg-wash p-4">{children}</div>
+      )}
     </div>
   );
 }
@@ -859,86 +998,60 @@ function NonDocumentErrorCard({
   const stats = error.stats;
   const verdict = stats?.verdict ?? "non_document";
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10 p-4 space-y-3">
-      <div className="flex items-start gap-3">
-        <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
-            {error.code === "non_document_pdf" ? "Document not recognized" : "Extraction blocked"}
-          </h3>
-          <p className="text-sm text-amber-900/90 dark:text-amber-100/90 mt-1">{error.message}</p>
-        </div>
+    <div className="w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-card">
+      <div className="mb-2.5 flex items-center gap-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-flag" />
+        <span className="text-[11px] uppercase tracking-[0.09em] text-flag">Couldn't read it</span>
       </div>
+      <h3 className="font-serif text-[20px] leading-snug">
+        This doesn't look like a document we can read.
+      </h3>
+      <p className="mt-2.5 text-[13.5px] leading-relaxed text-muted-foreground">{error.message}</p>
 
       {stats && (
-        <div className="rounded border border-amber-200 bg-white/60 text-amber-900 dark:border-amber-500/20 dark:bg-black/20 dark:text-amber-100 p-2 text-xs space-y-1">
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            <span>
-              <strong>Verdict:</strong> <code className="font-mono">{verdict}</code>
-            </span>
-            {stats.reason && (
-              <span>
-                <strong>Reason:</strong> <code className="font-mono">{stats.reason}</code>
-              </span>
-            )}
-            {stats.page_count != null && (
-              <span>
-                <strong>Pages:</strong> {stats.page_count}
-              </span>
-            )}
+        <details className="mt-3 text-[11px] text-faint">
+          <summary className="cursor-pointer font-mono transition-colors hover:text-muted-foreground">
+            Technical details
+          </summary>
+          <div className="mt-2 space-y-1 font-mono">
+            <div>
+              verdict {verdict}
+              {stats.reason ? ` · ${stats.reason}` : ""}
+              {stats.page_count != null ? ` · ${stats.page_count} pages` : ""}
+            </div>
+            {stats.pages_sampled?.map((p, i) => (
+              <div key={i} className="text-faint/80">
+                p{p.page ?? i + 1}: score {p.score}/{p.score_threshold} · {p.verdict}
+              </div>
+            ))}
           </div>
-          {stats.pages_sampled && stats.pages_sampled.length > 0 && (
-            <details className="mt-1">
-              <summary className="cursor-pointer text-amber-800/90 dark:text-amber-200/90">
-                Sampled pages ({stats.pages_sampled.length})
-              </summary>
-              <ul className="mt-1 pl-3 space-y-0.5">
-                {stats.pages_sampled.map((p, i) => (
-                  <li key={i} className="font-mono text-[10px] leading-snug">
-                    p{p.page ?? i + 1}: score {p.score}/{p.score_threshold} · verdict {p.verdict}
-                    {p.bg_pct != null && ` · bg ${(p.bg_pct * 100).toFixed(1)}%`}
-                    {p.saturation != null && ` · sat ${p.saturation.toFixed(1)}`}
-                    {p.edge_density != null && ` · edge ${(p.edge_density * 100).toFixed(1)}%`}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
+        </details>
       )}
 
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={onRetry} className="bg-amber-600 hover:bg-amber-700 text-white">
-          <RefreshCw className="h-3.5 w-3.5" /> Retry, skip relevance check
+      <div className="mt-5 flex items-center gap-4">
+        <Button onClick={onRetry}>
+          <RefreshCw className="h-3.5 w-3.5" /> Read it anyway
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
+        <button
           onClick={onDismiss}
-          className="text-amber-800 dark:text-amber-200"
+          className="text-[13px] text-muted-foreground transition-colors hover:text-ink"
         >
-          Dismiss
-        </Button>
+          Cancel
+        </button>
       </div>
     </div>
   );
 }
 
-function SheetDisabled({
-  active,
-  children,
-  message = "In this document format this action is not required.",
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  message?: string;
-}) {
-  if (!active) return <>{children}</>;
-  return (
-    <div className="relative cursor-not-allowed" title={message} aria-disabled="true">
-      <div className="opacity-40 blur-[1.5px] pointer-events-none select-none">{children}</div>
-    </div>
-  );
+/** Does the result hold a table of rows? (Their inner lines sit behind per-row expanders.) */
+function containsRowArray(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    if (value.length > 0 && value.every((v) => v !== null && typeof v === "object")) return true;
+    return value.some(containsRowArray);
+  }
+  if (value !== null && typeof value === "object")
+    return Object.values(value as Record<string, unknown>).some(containsRowArray);
+  return false;
 }
 
 /** Count non-null scalar leaves — the values that could carry a source location. */
@@ -952,15 +1065,4 @@ function countLeaves(value: unknown): number {
     );
   }
   return 1;
-}
-
-function SectionTitle({ n, title, inline }: { n: number; title: string; inline?: boolean }) {
-  return (
-    <div className={`flex items-center gap-2 ${inline ? "" : "mb-3"}`}>
-      <span className="h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-semibold grid place-items-center">
-        {n}
-      </span>
-      <h2 className="font-semibold text-sm">{title}</h2>
-    </div>
-  );
 }

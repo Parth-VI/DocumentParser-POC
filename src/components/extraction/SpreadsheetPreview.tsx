@@ -21,9 +21,10 @@ export function SpreadsheetPreview({ file, className }: { file: File; className?
     (async () => {
       try {
         const ext = file.name.toLowerCase().split(".").pop() ?? "";
-        const parsed = ext === "csv" || file.type === "text/csv" || file.type === "application/csv"
-          ? await parseCsv(file)
-          : await parseExcelLike(file);
+        const parsed =
+          ext === "csv" || file.type === "text/csv" || file.type === "application/csv"
+            ? await parseCsv(file)
+            : await parseExcelLike(file);
         if (cancelled) return;
         // Take only the first sheet, clip columns for safety, keep all rows.
         const firstSheet = parsed[0]?.rows ?? [];
@@ -35,7 +36,9 @@ export function SpreadsheetPreview({ file, className }: { file: File; className?
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [file]);
 
   const colCount = useMemo(() => {
@@ -58,9 +61,11 @@ export function SpreadsheetPreview({ file, className }: { file: File; className?
   };
 
   return (
-    <div className={`rounded-lg border bg-background overflow-hidden flex flex-col ${className ?? ""}`}>
+    <div
+      className={`rounded-lg border bg-background overflow-hidden flex flex-col ${className ?? ""}`}
+    >
       <div className="border-b bg-card/60 px-3 py-1.5 flex items-center gap-2 text-xs flex-wrap">
-        <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+        <FileSpreadsheet className="h-3.5 w-3.5 text-ok" />
         <span className="font-medium truncate">{file.name}</span>
         {rows && (
           <span className="text-muted-foreground">
@@ -78,9 +83,7 @@ export function SpreadsheetPreview({ file, className }: { file: File; className?
             <Loader2 className="h-4 w-4 animate-spin" /> Parsing spreadsheet…
           </div>
         )}
-        {error && (
-          <div className="p-4 text-xs text-rose-600 dark:text-rose-400">Could not parse file: {error}</div>
-        )}
+        {error && <div className="p-4 text-xs text-destructive">Could not parse file: {error}</div>}
         {!loading && !error && rows && rows.length === 0 && (
           <div className="p-4 text-xs text-muted-foreground">Sheet is empty.</div>
         )}
@@ -101,7 +104,8 @@ export function SpreadsheetPreview({ file, className }: { file: File; className?
             <ChevronLeft className="h-3.5 w-3.5" /> Prev
           </Button>
           <span className="text-muted-foreground">
-            Rows {(pageStart + 1).toLocaleString()}–{pageEnd.toLocaleString()} of {rows.length.toLocaleString()}
+            Rows {(pageStart + 1).toLocaleString()}–{pageEnd.toLocaleString()} of{" "}
+            {rows.length.toLocaleString()}
             <span className="mx-2">·</span>
             Page {page + 1} of {totalPages}
           </span>
@@ -120,13 +124,23 @@ export function SpreadsheetPreview({ file, className }: { file: File; className?
   );
 }
 
-function SheetTable({ rows, colCount, startRow }: { rows: string[][]; colCount: number; startRow: number }) {
+function SheetTable({
+  rows,
+  colCount,
+  startRow,
+}: {
+  rows: string[][];
+  colCount: number;
+  startRow: number;
+}) {
   const cols = Array.from({ length: colCount }, (_, i) => i);
   return (
     <table className="text-xs w-full border-collapse">
       <thead className="sticky top-0 bg-muted/95 backdrop-blur z-10">
         <tr>
-          <th className="border-b border-r px-2 py-1.5 text-muted-foreground/70 font-normal w-10 text-center">#</th>
+          <th className="border-b border-r px-2 py-1.5 text-muted-foreground/70 font-normal w-10 text-center">
+            #
+          </th>
           {cols.map((i) => (
             <th
               key={i}
@@ -144,7 +158,10 @@ function SheetTable({ rows, colCount, startRow }: { rows: string[][]; colCount: 
               {startRow + ri + 1}
             </td>
             {cols.map((ci) => (
-              <td key={ci} className="border-b border-r px-2 py-1 align-top whitespace-pre-wrap break-words">
+              <td
+                key={ci}
+                className="border-b border-r px-2 py-1 align-top whitespace-pre-wrap break-words"
+              >
                 {row[ci] ?? ""}
               </td>
             ))}
@@ -184,25 +201,33 @@ function parseCsvText(text: string): string[][] {
     const ch = text[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (text[i + 1] === '"') { cur += '"'; i++; }
-        else inQuotes = false;
+        if (text[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else inQuotes = false;
       } else {
         cur += ch;
       }
     } else {
       if (ch === '"') inQuotes = true;
-      else if (ch === ",") { row.push(cur); cur = ""; }
-      else if (ch === "\n" || ch === "\r") {
+      else if (ch === ",") {
+        row.push(cur);
+        cur = "";
+      } else if (ch === "\n" || ch === "\r") {
         if (ch === "\r" && text[i + 1] === "\n") i++;
         row.push(cur);
         if (row.length > 1 || row[0] !== "") rows.push(row);
-        row = []; cur = "";
+        row = [];
+        cur = "";
       } else {
         cur += ch;
       }
     }
   }
-  if (cur !== "" || row.length > 0) { row.push(cur); rows.push(row); }
+  if (cur !== "" || row.length > 0) {
+    row.push(cur);
+    rows.push(row);
+  }
   return rows;
 }
 
@@ -212,7 +237,12 @@ async function parseExcelLike(file: File): Promise<Sheet[]> {
   const wb = XLSX.read(buf, { type: "array" });
   return wb.SheetNames.map((name) => {
     const sheet = wb.Sheets[name];
-    const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: "", blankrows: false, raw: false });
+    const rows = XLSX.utils.sheet_to_json<string[]>(sheet, {
+      header: 1,
+      defval: "",
+      blankrows: false,
+      raw: false,
+    });
     return { name, rows };
   });
 }

@@ -1,14 +1,32 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertCircle, ClipboardPaste } from "lucide-react";
 import { FieldSpec, FieldType, newField, readEnum } from "@/lib/extraction-types";
 
 const ALLOWED_TYPES: FieldType[] = [
-  "text", "number", "integer", "decimal", "boolean",
-  "date", "time", "datetime", "list", "object",
-  "email", "phone", "currency", "enum",
+  "text",
+  "number",
+  "integer",
+  "decimal",
+  "boolean",
+  "date",
+  "time",
+  "datetime",
+  "list",
+  "object",
+  "email",
+  "phone",
+  "currency",
+  "enum",
 ];
 
 function coerceField(raw: unknown, path: string): FieldSpec {
@@ -17,7 +35,8 @@ function coerceField(raw: unknown, path: string): FieldSpec {
   const name = typeof r.name === "string" ? r.name : "";
   if (!name) throw new Error(`${path}: missing "name"`);
   const type = r.type as FieldType;
-  if (!ALLOWED_TYPES.includes(type)) throw new Error(`${path}.${name}: invalid type "${String(r.type)}"`);
+  if (!ALLOWED_TYPES.includes(type))
+    throw new Error(`${path}.${name}: invalid type "${String(r.type)}"`);
   const out = newField({ name, type });
   if (typeof r.description === "string") out.description = r.description;
   if (typeof r.required === "boolean") out.required = r.required;
@@ -49,23 +68,34 @@ const EXAMPLE = `{
 }`;
 
 export function PasteSchemaDialog({
-  open, onOpenChange, onApply,
-}: { open: boolean; onOpenChange: (v: boolean) => void; onApply: (fields: FieldSpec[]) => void }) {
+  open,
+  onOpenChange,
+  onApply,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onApply: (fields: FieldSpec[]) => void;
+}) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const apply = () => {
     setError(null);
     let parsed: unknown;
-    try { parsed = JSON.parse(text); }
-    catch (e) {
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
       setError(`Invalid JSON: ${e instanceof Error ? e.message : "could not parse"}`);
       return;
     }
     try {
       let arr: unknown;
       if (Array.isArray(parsed)) arr = parsed;
-      else if (parsed && typeof parsed === "object" && Array.isArray((parsed as { fields?: unknown }).fields))
+      else if (
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as { fields?: unknown }).fields)
+      )
         arr = (parsed as { fields: unknown }).fields;
       else throw new Error(`Expected an array of fields or an object with a "fields" array`);
       const fields = (arr as unknown[]).map((f, i) => coerceField(f, `fields[${i}]`));
@@ -79,12 +109,21 @@ export function PasteSchemaDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setError(null); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) setError(null);
+      }}
+    >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><ClipboardPaste className="h-4 w-4" /> Paste schema JSON</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <ClipboardPaste className="h-4 w-4" /> Paste details as data
+          </DialogTitle>
           <DialogDescription>
-            Paste a JSON schema. Accepts <code className="font-mono text-xs">{`{ "fields": [...] }`}</code> or a bare array of field specs.
+            For developers — paste the details to capture as JSON. Accepts{" "}
+            <code className="font-mono text-xs">{`{ "fields": [...] }`}</code> or a bare array.
           </DialogDescription>
         </DialogHeader>
 
@@ -104,8 +143,12 @@ export function PasteSchemaDialog({
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={apply} disabled={!text.trim()}>Load schema</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={apply} disabled={!text.trim()}>
+            Load details
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -1,9 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronsUpDown, Loader2, RefreshCw, X, AlertCircle, Database, FilePlus2 } from "lucide-react";
+import {
+  Check,
+  ChevronsUpDown,
+  Loader2,
+  RefreshCw,
+  X,
+  AlertCircle,
+  Database,
+  FilePlus2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -40,39 +56,44 @@ export function TenantSelect({ selected, onChange, onLoad }: TenantSelectProps) 
     try {
       setTenants(await fetchTenants());
     } catch (e) {
-      setTenantsError(errorMessage(e, "Failed to load tenants"));
+      setTenantsError(errorMessage(e, "Couldn't load clients"));
     } finally {
       setTenantsLoading(false);
     }
   }, []);
 
-  useEffect(() => { void loadTenants(); }, [loadTenants]);
+  useEffect(() => {
+    void loadTenants();
+  }, [loadTenants]);
 
-  const handleSelect = useCallback((tenant: Tenant) => {
-    setOpen(false);
-    if (selected?.id === tenant.id) return;
-    onChange(tenant);
-    const seq = ++switchSeq.current;
-    setSchemaState("loading");
-    window.setTimeout(async () => {
-      try {
-        const config = await fetchTenantSchema(tenant.id);
-        if (switchSeq.current !== seq) return;
-        if (!config) {
-          setSchemaState("empty");
-          onLoad([], false, null);
-          return;
+  const handleSelect = useCallback(
+    (tenant: Tenant) => {
+      setOpen(false);
+      if (selected?.id === tenant.id) return;
+      onChange(tenant);
+      const seq = ++switchSeq.current;
+      setSchemaState("loading");
+      window.setTimeout(async () => {
+        try {
+          const config = await fetchTenantSchema(tenant.id);
+          if (switchSeq.current !== seq) return;
+          if (!config) {
+            setSchemaState("empty");
+            onLoad([], false, null);
+            return;
+          }
+          setSchemaState("loaded");
+          onLoad(config.fields, true, config);
+          toast.success(`Loaded details for ${tenant.name}`);
+        } catch (e) {
+          if (switchSeq.current !== seq) return;
+          setSchemaState("error");
+          toast.error(errorMessage(e, "Couldn't load details"));
         }
-        setSchemaState("loaded");
-        onLoad(config.fields, true, config);
-        toast.success(`Loaded schema for ${tenant.name}`);
-      } catch (e) {
-        if (switchSeq.current !== seq) return;
-        setSchemaState("error");
-        toast.error(errorMessage(e, "Failed to load schema"));
-      }
-    }, 150);
-  }, [selected?.id, onChange, onLoad]);
+      }, 150);
+    },
+    [selected?.id, onChange, onLoad],
+  );
 
   const clearSelection = useCallback(() => {
     switchSeq.current++;
@@ -82,14 +103,13 @@ export function TenantSelect({ selected, onChange, onLoad }: TenantSelectProps) 
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs">Tenant</Label>
-        {tenantsError && (
+      {tenantsError && (
+        <div className="flex items-center justify-end">
           <Button variant="ghost" size="sm" onClick={loadTenants} className="h-6 text-xs">
             <RefreshCw className="h-3 w-3" /> Retry
           </Button>
-        )}
-      </div>
+        </div>
+      )}
       {tenantsLoading && tenants.length === 0 ? (
         <Skeleton className="h-9 w-full" />
       ) : (
@@ -103,14 +123,17 @@ export function TenantSelect({ selected, onChange, onLoad }: TenantSelectProps) 
                 className="flex-1 justify-between font-normal"
               >
                 <span className={cn("truncate", !selected && "text-muted-foreground")}>
-                  {selected ? selected.name : "Select tenant…"}
+                  {selected ? selected.name : "Choose a client…"}
                 </span>
                 <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="p-0 w-[--radix-popover-trigger-width] min-w-[280px]" align="start">
+            <PopoverContent
+              className="p-0 w-[--radix-popover-trigger-width] min-w-[280px]"
+              align="start"
+            >
               <Command>
-                <CommandInput placeholder="Search tenants…" />
+                <CommandInput placeholder="Search clients…" />
                 <CommandList>
                   <CommandEmpty>
                     {tenantsError ? (
@@ -120,7 +143,7 @@ export function TenantSelect({ selected, onChange, onLoad }: TenantSelectProps) 
                         <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
                       </div>
                     ) : (
-                      <div className="text-xs text-muted-foreground py-3">No tenants found.</div>
+                      <div className="text-xs text-muted-foreground py-3">No clients found.</div>
                     )}
                   </CommandEmpty>
                   {tenants.length > 0 && (
@@ -131,9 +154,16 @@ export function TenantSelect({ selected, onChange, onLoad }: TenantSelectProps) 
                           value={`${t.name} ${t.id}`}
                           onSelect={() => handleSelect(t)}
                         >
-                          <Check className={cn("h-4 w-4", selected?.id === t.id ? "opacity-100" : "opacity-0")} />
+                          <Check
+                            className={cn(
+                              "h-4 w-4",
+                              selected?.id === t.id ? "opacity-100" : "opacity-0",
+                            )}
+                          />
                           <span className="truncate">{t.name}</span>
-                          <span className="ml-auto text-[10px] text-muted-foreground font-mono">{t.id}</span>
+                          <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+                            {t.id}
+                          </span>
                         </CommandItem>
                       ))}
                     </CommandGroup>
@@ -154,22 +184,22 @@ export function TenantSelect({ selected, onChange, onLoad }: TenantSelectProps) 
         <div className="text-xs">
           {schemaState === "loading" && (
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Fetching schema…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
             </div>
           )}
           {schemaState === "loaded" && (
             <Badge variant="secondary" className="gap-1.5">
-              <Database className="h-3 w-3" /> Schema loaded from database
+              <Database className="h-3 w-3" /> Saved details loaded
             </Badge>
           )}
           {schemaState === "empty" && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
-              <FilePlus2 className="h-3.5 w-3.5" /> No saved schema — define fields below and save.
+              <FilePlus2 className="h-3.5 w-3.5" /> No saved details yet — add them below and Save.
             </div>
           )}
           {schemaState === "error" && (
             <div className="flex items-center gap-1.5 text-destructive">
-              <AlertCircle className="h-3.5 w-3.5" /> Couldn't load tenant schema.
+              <AlertCircle className="h-3.5 w-3.5" /> Couldn't load this client's details.
             </div>
           )}
         </div>

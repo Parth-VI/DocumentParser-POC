@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, KeyRound, Loader2, Plug } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronRight, KeyRound, Loader2, Plug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/ai-api";
 import { fetchTenants, type Tenant } from "@/lib/document-ai";
 import {
@@ -58,13 +59,14 @@ export function ConnectMailboxDialog({ open, onOpenChange, onConnected, encrypti
   const [probe, setProbe] = useState<ProbeResult | null>(null);
   const [testing, setTesting] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [advOpen, setAdvOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setProbe(null);
     void fetchTenants()
       .then(setTenants)
-      .catch((e) => toast.error(errorMessage(e, "Could not load tenants")));
+      .catch((e) => toast.error(errorMessage(e, "Could not load clients")));
   }, [open]);
 
   // Credential edits invalidate a previous green tick.
@@ -116,24 +118,24 @@ export function ConnectMailboxDialog({ open, onOpenChange, onConnected, encrypti
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto overflow-x-hidden">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 font-serif text-[20px] font-normal">
             <Plug className="h-4 w-4" /> Connect a mailbox
           </DialogTitle>
           <DialogDescription>
-            Unread mail is fetched, its attachments merged into one document, and extracted with the
-            chosen tenant's schema. The subject and body become the document context.
+            We'll read each document as it arrives and pull the details you asked for. The email's
+            subject and body help the reader understand it.
           </DialogDescription>
         </DialogHeader>
 
         {!encryptionReady && (
-          <div className="rounded-md border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 text-xs px-3 py-2 flex items-start gap-2">
-            <KeyRound className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <div className="flex items-start gap-2 rounded-md border border-flag/40 bg-flag-tint px-3 py-2 text-[12px] text-flag">
+            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              <strong>MAILBOX_ENCRYPTION_KEY is not set</strong> on the service, so the password
-              can't be stored encrypted. Testing works; connecting is blocked until the key is
-              added.
+              <strong>Password storage isn't set up on the server yet</strong>, so the mailbox
+              password can't be saved securely. You can test the connection now; connecting is
+              blocked until it's configured.
             </span>
           </div>
         )}
@@ -145,18 +147,19 @@ export function ConnectMailboxDialog({ open, onOpenChange, onConnected, encrypti
                 key={p.host}
                 type="button"
                 onClick={() => patch({ imap_host: p.host, imap_port: p.port })}
-                className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                className={cn(
+                  "rounded-full border px-2.5 py-0.5 text-[12px] transition-colors",
                   creds.imap_host === p.host
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background hover:bg-accent"
-                }`}
+                    ? "border-ink bg-ink text-paper"
+                    : "border-line bg-paper text-muted-foreground hover:border-ink hover:text-ink",
+                )}
               >
                 {p.label}
               </button>
             ))}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label className="text-xs">Email address</Label>
               <Input
@@ -178,40 +181,15 @@ export function ConnectMailboxDialog({ open, onOpenChange, onConnected, encrypti
                 className="mt-1 font-mono"
                 autoComplete="new-password"
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {preset?.hint ?? "Use a provider app password, not your login password."}
               </p>
             </div>
             <div>
-              <Label className="text-xs">IMAP host</Label>
-              <Input
-                value={creds.imap_host}
-                onChange={(e) => patch({ imap_host: e.target.value })}
-                className="mt-1 font-mono"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Port</Label>
-              <Input
-                type="number"
-                value={creds.imap_port}
-                onChange={(e) => patch({ imap_port: Number(e.target.value) || 993 })}
-                className="mt-1 font-mono"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Folder</Label>
-              <Input
-                value={creds.folder}
-                onChange={(e) => patch({ folder: e.target.value })}
-                className="mt-1 font-mono"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Extract with tenant schema</Label>
+              <Label className="text-xs">Read for client</Label>
               <Select value={tenantId} onValueChange={setTenantId}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select tenant…" />
+                  <SelectValue placeholder="Choose a client…" />
                 </SelectTrigger>
                 <SelectContent>
                   {tenants.map((t) => (
@@ -223,13 +201,13 @@ export function ConnectMailboxDialog({ open, onOpenChange, onConnected, encrypti
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Model</Label>
+              <Label className="text-xs">Reader</Label>
               <Select value={model} onValueChange={(v) => setModel(v as typeof model)}>
                 <SelectTrigger className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="tenant">Tenant default</SelectItem>
+                  <SelectItem value="tenant">Client default</SelectItem>
                   <SelectItem value="claude">Claude</SelectItem>
                   <SelectItem value="openai">OpenAI</SelectItem>
                 </SelectContent>
@@ -246,11 +224,10 @@ export function ConnectMailboxDialog({ open, onOpenChange, onConnected, encrypti
             />
             <div>
               <Label htmlFor="mark-read" className="text-sm">
-                Mark mail as read after storing it
+                Mark mail as read once stored
               </Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Only messages we successfully stored are flagged, so a failed fetch is retried on
-                the next sync.
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Only mail we successfully stored is marked, so a failed fetch is retried next time.
               </p>
             </div>
           </div>
@@ -263,19 +240,62 @@ export function ConnectMailboxDialog({ open, onOpenChange, onConnected, encrypti
             />
             <div>
               <Label htmlFor="skip-rel" className="text-sm">
-                Skip the relevance check
+                Skip the double-check
               </Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Leave off so non-document attachments (signatures, screenshots) are rejected before
-                any tokens are spent.
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Leave off so non-documents (signatures, screenshots) are set aside before anything
+                is read.
               </p>
             </div>
           </div>
 
+          {/* Server connection detail — rarely touched once a preset is picked. */}
+          <div className="border-t border-line-soft pt-3">
+            <button
+              type="button"
+              onClick={() => setAdvOpen((v) => !v)}
+              className="inline-flex items-center gap-1.5 text-[12.5px] text-faint transition-colors hover:text-ink"
+            >
+              <ChevronRight
+                className={cn("h-3.5 w-3.5 transition-transform", advOpen && "rotate-90")}
+              />
+              Advanced setup
+            </button>
+            {advOpen && (
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Label className="text-xs text-faint">Mail server (IMAP host)</Label>
+                  <Input
+                    value={creds.imap_host}
+                    onChange={(e) => patch({ imap_host: e.target.value })}
+                    className="mt-1 font-mono"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-faint">Port</Label>
+                  <Input
+                    type="number"
+                    value={creds.imap_port}
+                    onChange={(e) => patch({ imap_port: Number(e.target.value) || 993 })}
+                    className="mt-1 font-mono"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-faint">Folder</Label>
+                  <Input
+                    value={creds.folder}
+                    onChange={(e) => patch({ folder: e.target.value })}
+                    className="mt-1 font-mono"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           {probe && (
-            <div className="rounded-md border border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100 text-xs px-3 py-2 flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-md border border-ok/30 bg-ok/10 px-3 py-2 text-[12px] text-ok">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-              Login OK — <strong>{probe.unseen}</strong> unread of {probe.total} in {probe.folder}
+              Connected — <strong>{probe.unseen}</strong> unread of {probe.total} in {probe.folder}
             </div>
           )}
         </div>
@@ -301,9 +321,9 @@ export function ConnectMailboxDialog({ open, onOpenChange, onConnected, encrypti
           </Button>
         </DialogFooter>
         {!tenantId && canTest && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <AlertCircle className="h-3.5 w-3.5" />
-            Pick the tenant whose saved schema should extract this mailbox.
+            Pick the client whose saved details should read this mailbox.
           </p>
         )}
       </DialogContent>

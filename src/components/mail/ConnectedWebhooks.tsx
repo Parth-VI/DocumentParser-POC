@@ -1,22 +1,24 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { History, Loader2, Send, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { ChevronRight, History, Loader2, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { DeliveryList, type DeliveryRecord } from "@/components/mail/DeliveryList";
+import { statusLabel } from "@/routes/mail.index";
+import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/ai-api";
 import {
   deleteWebhook,
   fetchDeliveries,
   testWebhook,
   updateWebhook,
+  type MailStatus,
   type MailWebhook,
   type WebhookDelivery,
 } from "@/lib/mailbox-api";
 
 /**
- * The connected destinations, each expandable into the payloads sent to it.
+ * The connected destinations, each expandable into the results sent to it.
  *
  * The list and its history live together here rather than beside the create form:
  * managing a destination and inspecting what it received are the same task, and
@@ -34,6 +36,7 @@ export function ConnectedWebhooks({
 }) {
   const [testingId, setTestingId] = useState<number | null>(null);
   const [historyId, setHistoryId] = useState<number | null>(null);
+  const [advId, setAdvId] = useState<number | null>(null);
   const [history, setHistory] = useState<WebhookDelivery[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -59,19 +62,19 @@ export function ConnectedWebhooks({
       await updateWebhook(hook.id, { is_active: !hook.is_active });
       onChanged();
     } catch (e) {
-      toast.error(errorMessage(e, "Could not update the webhook"));
+      toast.error(errorMessage(e, "Could not update the connection"));
     }
   };
 
   const remove = async (hook: MailWebhook) => {
-    if (!confirm(`Delete webhook "${hook.name}"?`)) return;
+    if (!confirm(`Remove the connection "${hook.name}"?`)) return;
     try {
       await deleteWebhook(hook.id);
       if (historyId === hook.id) setHistoryId(null);
       onChanged();
-      toast.success("Webhook deleted");
+      toast.success("Connection removed");
     } catch (e) {
-      toast.error(errorMessage(e, "Could not delete the webhook"));
+      toast.error(errorMessage(e, "Could not remove the connection"));
     }
   };
 
@@ -113,7 +116,7 @@ export function ConnectedWebhooks({
 
   if (loading && hooks.length === 0) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-3">
+      <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
         <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
       </div>
     );
@@ -121,12 +124,12 @@ export function ConnectedWebhooks({
 
   if (hooks.length === 0) {
     return (
-      <div className="rounded-lg border-2 border-dashed p-8 text-center space-y-1">
-        <p className="text-sm font-medium">No webhooks connected</p>
-        <p className="text-xs text-muted-foreground">
-          Add one under <strong>Add webhook</strong>, or use the <strong>Test receiver</strong> to
-          see the payload shape first. Extractions are stored either way — a webhook only forwards
-          them.
+      <div className="rounded-md border border-line-soft bg-wash p-8 text-center">
+        <p className="text-sm font-medium">No connections yet</p>
+        <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
+          Add one under <strong>Add a connection</strong>, or use the <strong>Test receiver</strong>{" "}
+          to see what a delivery looks like first. Results are always saved here either way — a
+          connection only forwards them.
         </p>
       </div>
     );
@@ -136,35 +139,54 @@ export function ConnectedWebhooks({
     <div className="space-y-2">
       {hooks.map((hook) => {
         const open = historyId === hook.id;
+        const advOpen = advId === hook.id;
         return (
-          <div key={hook.id} className="rounded-lg border min-w-0">
+          <div key={hook.id} className="min-w-0 rounded-md border border-line">
             <div className="flex items-start gap-2 p-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate">{hook.name}</span>
+                  <span className="truncate text-sm font-medium">{hook.name}</span>
                   {hook.include_document && (
-                    <Badge variant="secondary" className="text-[10px]">
-                      +document
-                    </Badge>
+                    <span className="rounded-full border border-line bg-wash px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      with document
+                    </span>
                   )}
                   {!hook.is_active && (
-                    <Badge variant="outline" className="text-[10px]">
+                    <span className="rounded-full border border-line bg-paper px-1.5 py-0.5 text-[10px] text-muted-foreground">
                       Paused
-                    </Badge>
+                    </span>
                   )}
                 </div>
-                <div className="text-xs text-muted-foreground font-mono truncate" title={hook.url}>
-                  {hook.url}
-                </div>
-                <div className="flex flex-wrap gap-1 mt-1.5">
+                <div className="mt-1.5 flex flex-wrap gap-1">
                   {hook.events.map((e) => (
-                    <Badge key={e} variant="outline" className="text-[10px]">
-                      {e}
-                    </Badge>
+                    <span
+                      key={e}
+                      className="rounded-full border border-line bg-wash px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                    >
+                      {statusLabel(e as MailStatus)}
+                    </span>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setAdvId(advOpen ? null : hook.id)}
+                  className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-faint transition-colors hover:text-ink"
+                >
+                  <ChevronRight
+                    className={cn("h-3 w-3 transition-transform", advOpen && "rotate-90")}
+                  />
+                  Advanced setup
+                </button>
+                {advOpen && (
+                  <div
+                    className="mt-1.5 break-all font-mono text-[11px] leading-relaxed text-faint"
+                    title={hook.url}
+                  >
+                    POST {hook.url}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex shrink-0 items-center gap-1">
                 <Switch
                   checked={hook.is_active}
                   onCheckedChange={() => toggleActive(hook)}
@@ -173,8 +195,8 @@ export function ConnectedWebhooks({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`h-7 w-7 ${open ? "bg-accent" : ""}`}
-                  title={open ? "Hide sent payloads" : "Show sent payloads"}
+                  className={cn("h-7 w-7", open && "bg-wash-2")}
+                  title={open ? "Hide what was sent" : "Show what was sent"}
                   onClick={() => loadHistory(hook)}
                 >
                   <History className="h-3.5 w-3.5" />
@@ -183,7 +205,7 @@ export function ConnectedWebhooks({
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7"
-                  title="Send a test payload"
+                  title="Send a test delivery"
                   onClick={() => send(hook)}
                   disabled={testingId === hook.id}
                 >
@@ -196,8 +218,8 @@ export function ConnectedWebhooks({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
-                  title="Delete"
+                  className="h-7 w-7 text-destructive hover:text-destructive"
+                  title="Remove"
                   onClick={() => remove(hook)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -206,22 +228,22 @@ export function ConnectedWebhooks({
             </div>
 
             {open && (
-              <div className="border-t bg-muted/20 p-3 min-w-0">
+              <div className="min-w-0 border-t border-line-soft bg-wash/50 p-3">
                 {historyLoading ? (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading sent payloads…
+                  <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading what was sent…
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="mb-2 flex items-center gap-2">
                       <span className="text-xs font-medium">
-                        Sent payloads{" "}
+                        What we've sent{" "}
                         <span className="text-muted-foreground">({records(hook).length})</span>
                       </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 text-xs ml-auto"
+                        className="ml-auto h-6 text-xs"
                         onClick={() => loadHistory(hook, true)}
                       >
                         Refresh
@@ -232,8 +254,8 @@ export function ConnectedWebhooks({
                       bodyLabel="What was sent to this destination"
                       emptyHint={
                         <>
-                          Nothing delivered yet. Press the <strong>send</strong> icon above, or sync
-                          a mailbox with a matching event.
+                          Nothing sent yet. Press the <strong>send</strong> icon above, or fetch
+                          mail matching one of the events above.
                         </>
                       }
                     />

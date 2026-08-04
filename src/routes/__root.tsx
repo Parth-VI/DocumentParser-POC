@@ -75,16 +75,26 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Document parser" },
-      { name: "description", content: "Document parser" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Document parser" },
-      { property: "og:description", content: "Document parser" },
+      { title: "Document Studio" },
+      {
+        name: "description",
+        content: "Upload a document and we'll read it and pull out the details for you.",
+      },
+      { property: "og:title", content: "Document Studio" },
+      {
+        property: "og:description",
+        content: "Upload a document and we'll read it and pull out the details for you.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=JetBrains+Mono:wght@400;500;600&display=swap",
+      },
       {
         rel: "stylesheet",
         href: appCss,

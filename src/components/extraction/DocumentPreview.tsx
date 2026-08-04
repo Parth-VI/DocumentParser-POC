@@ -1,12 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowUpRight, ChevronDown, Download, Eraser, FileText, Highlighter, Loader2, RotateCw, Square,
-  Trash2, ZoomIn, ZoomOut,
+  ArrowUpRight,
+  ChevronDown,
+  Download,
+  Eraser,
+  FileText,
+  Highlighter,
+  Loader2,
+  RotateCw,
+  Square,
+  Trash2,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { FieldLocation } from "@/lib/extraction-types";
 
@@ -23,9 +35,9 @@ type PageInfo = { baseWidth: number; baseHeight: number };
 
 const TOOLS: { key: Tool; label: string; icon: LucideIcon }[] = [
   { key: "highlight", label: "Highlight", icon: Highlighter },
-  { key: "box",       label: "Box",       icon: Square },
-  { key: "arrow",     label: "Arrow",     icon: ArrowUpRight },
-  { key: "eraser",    label: "Eraser",    icon: Eraser },
+  { key: "box", label: "Box", icon: Square },
+  { key: "arrow", label: "Arrow", icon: ArrowUpRight },
+  { key: "eraser", label: "Eraser", icon: Eraser },
 ];
 
 const COLORS: { key: string; label: string }[] = [
@@ -55,8 +67,10 @@ type DocumentPreviewProps = {
 };
 
 export function DocumentPreview({
-  file, className,
-  sourceHighlights, activeLocationPath,
+  file,
+  className,
+  sourceHighlights,
+  activeLocationPath,
 }: DocumentPreviewProps) {
   const [isPdf, setIsPdf] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -139,7 +153,9 @@ export function DocumentPreview({
           if (!cancelled) setLoading(false);
         }
       })();
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
   }, [file]);
 
@@ -203,23 +219,27 @@ export function DocumentPreview({
 
   const clearAll = () => {
     if (annotations.length === 0) return;
-    if (confirm(`Remove all ${annotations.length} annotation${annotations.length === 1 ? "" : "s"}?`)) {
+    if (
+      confirm(`Remove all ${annotations.length} annotation${annotations.length === 1 ? "" : "s"}?`)
+    ) {
       setAnnotations([]);
     }
   };
 
   const eraseAt = (pageIdx: number, x: number, y: number) => {
-    setAnnotations((curr) => curr.filter((a) => {
-      if (a.page !== pageIdx) return true;
-      if (a.kind === "highlight" || a.kind === "box") {
-        const r = a.rect;
-        return !(x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
-      }
-      if (a.kind === "arrow") {
-        return pointToSegmentDist({ x, y }, a.from, a.to) > 0.015;
-      }
-      return true;
-    }));
+    setAnnotations((curr) =>
+      curr.filter((a) => {
+        if (a.page !== pageIdx) return true;
+        if (a.kind === "highlight" || a.kind === "box") {
+          const r = a.rect;
+          return !(x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+        }
+        if (a.kind === "arrow") {
+          return pointToSegmentDist({ x, y }, a.from, a.to) > 0.015;
+        }
+        return true;
+      }),
+    );
   };
 
   const onPageMouseDown = (e: React.MouseEvent, pageIdx: number) => {
@@ -248,14 +268,20 @@ export function DocumentPreview({
   };
 
   const onPageMouseUp = () => {
-    if (erasing) { setErasing(false); return; }
+    if (erasing) {
+      setErasing(false);
+      return;
+    }
     if (!draft) return;
     const { page, start, cur } = draft;
     if (tool === "arrow") {
       const dx = cur.x - start.x;
       const dy = cur.y - start.y;
       if (dx * dx + dy * dy > 0.0004) {
-        setAnnotations((curr) => [...curr, { id: newAid(), kind: "arrow", page, from: start, to: cur, color }]);
+        setAnnotations((curr) => [
+          ...curr,
+          { id: newAid(), kind: "arrow", page, from: start, to: cur, color },
+        ]);
       }
     } else if (tool === "highlight" || tool === "box") {
       const r = normRect(start, cur);
@@ -268,7 +294,9 @@ export function DocumentPreview({
 
   if (!file) {
     return (
-      <div className={`rounded-lg border-2 border-dashed p-10 text-center text-sm text-muted-foreground ${className ?? ""}`}>
+      <div
+        className={`rounded-lg border-2 border-dashed p-10 text-center text-sm text-muted-foreground ${className ?? ""}`}
+      >
         <FileText className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
         Upload a document to see the preview.
       </div>
@@ -276,31 +304,60 @@ export function DocumentPreview({
   }
 
   const cursorClass =
-    tool === null ? "cursor-default" :
-    tool === "eraser" ? "cursor-cell" :
-    "cursor-crosshair";
+    tool === null ? "cursor-default" : tool === "eraser" ? "cursor-cell" : "cursor-crosshair";
 
   return (
-    <div className={`rounded-lg border bg-background overflow-hidden flex flex-col ${className ?? ""}`}>
+    <div
+      className={`rounded-lg border bg-background overflow-hidden flex flex-col ${className ?? ""}`}
+    >
       {/* TOOLBAR */}
       <div className="border-b bg-card/60 px-2 py-1.5 flex items-center gap-1 flex-wrap text-xs">
-        <Button variant="ghost" size="sm" className="h-7 px-1.5" onClick={zoomOut} disabled={scale <= MIN_SCALE} title="Zoom out">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-1.5"
+          onClick={zoomOut}
+          disabled={scale <= MIN_SCALE}
+          title="Zoom out"
+        >
           <ZoomOut className="h-3.5 w-3.5" />
         </Button>
-        <button onClick={zoomReset} className="px-1.5 py-0.5 rounded hover:bg-accent font-mono min-w-[3rem] text-center" title="Reset zoom (100%)">
+        <button
+          onClick={zoomReset}
+          className="px-1.5 py-0.5 rounded hover:bg-accent font-mono min-w-[3rem] text-center"
+          title="Reset zoom (100%)"
+        >
           {Math.round(scale * 100)}%
         </button>
-        <Button variant="ghost" size="sm" className="h-7 px-1.5" onClick={zoomIn} disabled={scale >= MAX_SCALE} title="Zoom in">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-1.5"
+          onClick={zoomIn}
+          disabled={scale >= MAX_SCALE}
+          title="Zoom in"
+        >
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
-        <Button variant="ghost" size="sm" className="h-7" onClick={zoomFit} title="Fit width">Fit</Button>
+        <Button variant="ghost" size="sm" className="h-7" onClick={zoomFit} title="Fit width">
+          Fit
+        </Button>
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        <Button variant="ghost" size="sm" className="h-7 px-1.5" onClick={rotate} title="Rotate 90°">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-1.5"
+          onClick={rotate}
+          title="Rotate 90°"
+        >
           <RotateCw className="h-3.5 w-3.5" />
         </Button>
-        <span className="px-1 py-0.5 rounded font-mono min-w-[2rem] text-center text-[11px]" title="Current rotation">
+        <span
+          className="px-1 py-0.5 rounded font-mono min-w-[2rem] text-center text-[11px]"
+          title="Current rotation"
+        >
           {rotation}°
         </span>
 
@@ -327,7 +384,12 @@ export function DocumentPreview({
         {/* COLOR DROPDOWN */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-7 ml-1 px-1.5 gap-1" title={`Color: ${COLORS.find((c) => c.key === color)?.label ?? ""}`}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 ml-1 px-1.5 gap-1"
+              title={`Color: ${COLORS.find((c) => c.key === color)?.label ?? ""}`}
+            >
               <span
                 className="h-3.5 w-3.5 rounded border border-black/10 inline-block"
                 style={{ background: color }}
@@ -352,7 +414,14 @@ export function DocumentPreview({
         </DropdownMenu>
 
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" className="h-7" onClick={clearAll} disabled={annotations.length === 0} title="Remove all annotations">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7"
+            onClick={clearAll}
+            disabled={annotations.length === 0}
+            title="Remove all annotations"
+          >
             <Trash2 className="h-3.5 w-3.5" /> Clear
           </Button>
           <Button variant="ghost" size="sm" className="h-7" onClick={download} title="Download">
@@ -366,23 +435,29 @@ export function DocumentPreview({
         {tool === "highlight" && "Drag on the document to highlight an area."}
         {tool === "box" && "Drag on the document to draw a box."}
         {tool === "arrow" && "Drag from the arrow's tail to its head."}
-        {tool === "eraser" && "Drag across annotations to erase them. Click the Eraser button again to deselect."}
+        {tool === "eraser" &&
+          "Drag across annotations to erase them. Click the Eraser button again to deselect."}
       </div>
 
       {/* SCROLLABLE VIEWER */}
-      <div ref={scrollerRef} className="overflow-auto bg-muted/30 p-3 space-y-3 max-h-[75vh] min-h-[400px]">
+      <div
+        ref={scrollerRef}
+        className="overflow-auto bg-muted/30 p-3 space-y-3 max-h-[75vh] min-h-[400px]"
+      >
         {loading && (
           <div className="flex items-center justify-center py-10 text-muted-foreground text-sm gap-2">
             <Loader2 className="h-4 w-4 animate-spin" /> Rendering document…
           </div>
         )}
-        {error && <div className="text-xs text-rose-600 px-2">{error}</div>}
+        {error && <div className="text-xs text-destructive px-2">{error}</div>}
 
         {/* IMAGE MODE */}
         {!isPdf && imageUrl && pages[0] && (
           <PageStage
             width={rotation % 180 === 90 ? pages[0].baseHeight * scale : pages[0].baseWidth * scale}
-            height={rotation % 180 === 90 ? pages[0].baseWidth * scale : pages[0].baseHeight * scale}
+            height={
+              rotation % 180 === 90 ? pages[0].baseWidth * scale : pages[0].baseHeight * scale
+            }
             cursorClass={cursorClass}
             onMouseDown={(e) => onPageMouseDown(e, 0)}
             onMouseMove={(e) => onPageMouseMove(e, 0)}
@@ -397,8 +472,12 @@ export function DocumentPreview({
             />
             <Overlay
               pageIdx={0}
-              pageWidth={rotation % 180 === 90 ? pages[0].baseHeight * scale : pages[0].baseWidth * scale}
-              pageHeight={rotation % 180 === 90 ? pages[0].baseWidth * scale : pages[0].baseHeight * scale}
+              pageWidth={
+                rotation % 180 === 90 ? pages[0].baseHeight * scale : pages[0].baseWidth * scale
+              }
+              pageHeight={
+                rotation % 180 === 90 ? pages[0].baseWidth * scale : pages[0].baseHeight * scale
+              }
               annotations={annotations}
               draft={draft}
               draftTool={tool}
@@ -410,54 +489,63 @@ export function DocumentPreview({
         )}
 
         {/* PDF MODE */}
-        {isPdf && pages.map((p, i) => {
-          const r = ((rotation % 360) + 360) % 360;
-          const swapped = r === 90 || r === 270;
-          const w = (swapped ? p.baseHeight : p.baseWidth) * scale;
-          const h = (swapped ? p.baseWidth : p.baseHeight) * scale;
-          return (
-            <div
-              key={i}
-              ref={(el) => { pageContainerRefs.current[i] = el; }}
-              className="space-y-1"
-            >
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground px-1">
-                Page {i + 1} of {pages.length}
-              </div>
-              <PageStage
-                width={w}
-                height={h}
-                cursorClass={cursorClass}
-                onMouseDown={(e) => onPageMouseDown(e, i)}
-                onMouseMove={(e) => onPageMouseMove(e, i)}
-                onMouseUp={onPageMouseUp}
+        {isPdf &&
+          pages.map((p, i) => {
+            const r = ((rotation % 360) + 360) % 360;
+            const swapped = r === 90 || r === 270;
+            const w = (swapped ? p.baseHeight : p.baseWidth) * scale;
+            const h = (swapped ? p.baseWidth : p.baseHeight) * scale;
+            return (
+              <div
+                key={i}
+                ref={(el) => {
+                  pageContainerRefs.current[i] = el;
+                }}
+                className="space-y-1"
               >
-                <canvas
-                  ref={(el) => { canvasRefs.current[i] = el; }}
-                  className="block select-none pointer-events-none"
-                />
-                <Overlay
-                  pageIdx={i}
-                  pageWidth={w}
-                  pageHeight={h}
-                  annotations={annotations}
-                  draft={draft}
-                  draftTool={tool}
-                  draftColor={color}
-                  sourceHighlights={sourceHighlights ?? null}
-                  activeLocationPath={activeLocationPath ?? null}
-                />
-              </PageStage>
-            </div>
-          );
-        })}
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground px-1">
+                  Page {i + 1} of {pages.length}
+                </div>
+                <PageStage
+                  width={w}
+                  height={h}
+                  cursorClass={cursorClass}
+                  onMouseDown={(e) => onPageMouseDown(e, i)}
+                  onMouseMove={(e) => onPageMouseMove(e, i)}
+                  onMouseUp={onPageMouseUp}
+                >
+                  <canvas
+                    ref={(el) => {
+                      canvasRefs.current[i] = el;
+                    }}
+                    className="block select-none pointer-events-none"
+                  />
+                  <Overlay
+                    pageIdx={i}
+                    pageWidth={w}
+                    pageHeight={h}
+                    annotations={annotations}
+                    draft={draft}
+                    draftTool={tool}
+                    draftColor={color}
+                    sourceHighlights={sourceHighlights ?? null}
+                    activeLocationPath={activeLocationPath ?? null}
+                  />
+                </PageStage>
+              </div>
+            );
+          })}
       </div>
 
       {/* FOOTER */}
       <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t bg-card/60 flex items-center gap-2">
         <FileText className="h-3 w-3" />
         <span className="truncate flex-1">{file.name}</span>
-        {annotations.length > 0 && <span>{annotations.length} annotation{annotations.length === 1 ? "" : "s"}</span>}
+        {annotations.length > 0 && (
+          <span>
+            {annotations.length} annotation{annotations.length === 1 ? "" : "s"}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -487,9 +575,18 @@ function pointToSegmentDist(p: Point, a: Point, b: Point): number {
 }
 
 function PageStage({
-  width, height, cursorClass, children, onMouseDown, onMouseMove, onMouseUp,
+  width,
+  height,
+  cursorClass,
+  children,
+  onMouseDown,
+  onMouseMove,
+  onMouseUp,
 }: {
-  width: number; height: number; cursorClass: string; children: React.ReactNode;
+  width: number;
+  height: number;
+  cursorClass: string;
+  children: React.ReactNode;
   onMouseDown: (e: React.MouseEvent) => void;
   onMouseMove: (e: React.MouseEvent) => void;
   onMouseUp: (e: React.MouseEvent) => void;
@@ -509,8 +606,15 @@ function PageStage({
 }
 
 function Overlay({
-  pageIdx, pageWidth, pageHeight, annotations, draft, draftTool, draftColor,
-  sourceHighlights, activeLocationPath,
+  pageIdx,
+  pageWidth,
+  pageHeight,
+  annotations,
+  draft,
+  draftTool,
+  draftColor,
+  sourceHighlights,
+  activeLocationPath,
 }: {
   pageIdx: number;
   pageWidth: number;
@@ -524,7 +628,9 @@ function Overlay({
 }) {
   const pageAnns = annotations.filter((a) => a.page === pageIdx);
   const showDraft = draft && draft.page === pageIdx;
-  const arrowAnns = pageAnns.filter((a): a is Extract<Annotation, { kind: "arrow" }> => a.kind === "arrow");
+  const arrowAnns = pageAnns.filter(
+    (a): a is Extract<Annotation, { kind: "arrow" }> => a.kind === "arrow",
+  );
 
   const activeSourceRects = (sourceHighlights ?? []).filter(
     (loc) => activeLocationPath && loc.path === activeLocationPath && loc.page - 1 === pageIdx,
@@ -537,14 +643,20 @@ function Overlay({
         if (a.kind === "highlight") {
           return (
             <RectChrome key={a.id} rect={a.rect} title="Highlight">
-              <div className="absolute inset-0" style={{ background: a.color, opacity: 0.45, mixBlendMode: "multiply" }} />
+              <div
+                className="absolute inset-0"
+                style={{ background: a.color, opacity: 0.45, mixBlendMode: "multiply" }}
+              />
             </RectChrome>
           );
         }
         if (a.kind === "box") {
           return (
             <RectChrome key={a.id} rect={a.rect} title="Box">
-              <div className="absolute inset-0" style={{ border: `2px solid ${a.color}`, background: `${a.color}10` }} />
+              <div
+                className="absolute inset-0"
+                style={{ border: `2px solid ${a.color}`, background: `${a.color}10` }}
+              />
             </RectChrome>
           );
         }
@@ -577,7 +689,15 @@ function Overlay({
               </marker>
             ))}
             {showDraft && draftTool === "arrow" && (
-              <marker id="arrow-draft" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <marker
+                id="arrow-draft"
+                viewBox="0 0 10 10"
+                refX="8"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
                 <path d="M0,0 L10,5 L0,10 Z" fill={draftColor} />
               </marker>
             )}
@@ -636,10 +756,10 @@ function Overlay({
               top: `${y0 * 100}%`,
               width: `${(x1 - x0) * 100}%`,
               height: `${(y1 - y0) * 100}%`,
-              background: "rgba(251, 191, 36, 0.35)",
-              border: "2px solid rgb(217, 119, 6)",
+              background: "rgba(53, 84, 138, 0.18)",
+              border: "2px solid rgba(53, 84, 138, 0.9)",
               borderRadius: 2,
-              boxShadow: "0 0 0 4px rgba(251, 191, 36, 0.15)",
+              boxShadow: "0 0 0 4px rgba(53, 84, 138, 0.12)",
             }}
             title={`${loc.path} = ${loc.value}`}
           />
@@ -650,23 +770,26 @@ function Overlay({
 }
 
 function RectChrome({
-  rect, title, children,
+  rect,
+  title,
+  children,
 }: {
   rect: Rect;
   title: string;
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className="absolute pointer-events-none"
-      style={pctStyle(rect)}
-      title={title}
-    >
+    <div className="absolute pointer-events-none" style={pctStyle(rect)} title={title}>
       {children}
     </div>
   );
 }
 
 function pctStyle(r: Rect): React.CSSProperties {
-  return { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` };
+  return {
+    left: `${r.x * 100}%`,
+    top: `${r.y * 100}%`,
+    width: `${r.w * 100}%`,
+    height: `${r.h * 100}%`,
+  };
 }

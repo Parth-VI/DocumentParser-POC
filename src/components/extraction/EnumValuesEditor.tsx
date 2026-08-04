@@ -23,7 +23,10 @@ export function EnumValuesEditor({ values, descriptions, onChange, placeholder }
   const removeValue = (v: string) => {
     const next = { ...descriptions };
     delete next[v];
-    onChange(values.filter((x) => x !== v), next);
+    onChange(
+      values.filter((x) => x !== v),
+      next,
+    );
   };
 
   const updateDescription = (v: string, desc: string) => {
@@ -62,7 +65,7 @@ export function EnumValuesEditor({ values, descriptions, onChange, placeholder }
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
                 onClick={() => removeValue(v)}
               >
                 <X className="h-3.5 w-3.5" />
